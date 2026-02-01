@@ -51,6 +51,8 @@ class VoiceAgentBot:
         )
         self.allowed_chat_ids = settings.get_allowed_chat_ids()
         self._prompt_locks: dict[int, asyncio.Lock] = {}
+        self._active_tasks: dict[int, asyncio.Task[None]] = {}
+        self._cancel_flags: dict[int, bool] = {}
 
     def is_allowed(self, chat_id: int) -> bool:
         """Check if a chat ID is allowed to use the bot.
@@ -87,7 +89,8 @@ class VoiceAgentBot:
             "- 'status' to check session state\n"
             "- 'new session' to start fresh\n"
             "- 'continue' to resume previous session\n"
-            "- 'yes/approve' or 'no/reject' for permission prompts"
+            "- 'yes/approve' or 'no/reject' for permission prompts\n"
+            "- 'escape/stop task/abort' to cancel running task"
         )
 
     async def status_command(
@@ -204,6 +207,8 @@ class VoiceAgentBot:
             await self._handle_continue_session(chat_id, update)
         elif command.command_type == CommandType.SWITCH_PROJECT:
             await self._handle_switch_project(chat_id, command.project, update)
+        elif command.command_type == CommandType.CANCEL:
+            await self._handle_cancel(chat_id, update)
         else:
             await self._handle_prompt(chat_id, command.text, update)
 
@@ -268,6 +273,14 @@ class VoiceAgentBot:
                 )
             else:
                 await query.edit_message_text("No pending permission.")
+        elif query.data == "cancel":
+            task = self._active_tasks.get(chat_id)
+            if task and not task.done():
+                self._cancel_flags[chat_id] = True
+                task.cancel()
+                await query.edit_message_text("⏹️ Task cancelled.")
+            else:
+                await query.edit_message_text("No running task to cancel.")
 
     async def _handle_status(self, chat_id: int, update: Update) -> None:
         """Handle status request."""
@@ -318,6 +331,27 @@ class VoiceAgentBot:
         self.session_manager.set_cwd(chat_id, cwd)
         await update.message.reply_text(f"Switched to {project} ({cwd})")  # type: ignore
 
+    async def _handle_cancel(self, chat_id: int, update: Update) -> None:
+        """Handle cancel/escape request to stop running task."""
+        import asyncio
+        import contextlib
+
+        task = self._active_tasks.get(chat_id)
+        if task and not task.done():
+            self._cancel_flags[chat_id] = True
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+            self._active_tasks.pop(chat_id, None)
+            self._cancel_flags.pop(chat_id, None)
+            await update.message.reply_text(  # type: ignore
+                "⏹️ Task cancelled."
+            )
+        else:
+            await update.message.reply_text(  # type: ignore
+                "No running task to cancel."
+            )
+
     def _get_prompt_lock(self, chat_id: int) -> "asyncio.Lock":
         """Get or create a lock for serializing prompts per chat."""
         import asyncio
@@ -362,7 +396,7 @@ class VoiceAgentBot:
                     InlineKeyboardButton("Reject", callback_data="reject"),
                 ]
             ])
-            await update.message.reply_text(desc, reply_markup=keyboard)  # type: ignore
+            await update.message.reply_text(desc,reply_markup=keyboard)  # type: ignore
 
         self.session_manager.set_notify_callback(chat_id, notify_permission)
 
@@ -375,9 +409,23 @@ class VoiceAgentBot:
                 await update.message.reply_text("(Queued, waiting for previous request...)")  # type: ignore
             async with lock:
                 logger.info("Processing prompt for chat %s: %s", chat_id, text[:50])
+                self._cancel_flags[chat_id] = False
+
+                # Send "working" message with Stop button
+                stop_keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🛑 Stop", callback_data="cancel")]
+                ])
+                working_msg = await update.message.reply_text(  # type: ignore
+                    "⏳ Working...", reply_markup=stop_keyboard
+                )
+
                 response_buffer: list[str] = []
                 try:
                     async for chunk in self.session_manager.send_prompt(chat_id, text):
+                        # Check if cancelled
+                        if self._cancel_flags.get(chat_id, False):
+                            logger.info("Task cancelled for chat %s", chat_id)
+                            break
                         response_buffer.append(chunk)
 
                         # Send in batches to avoid too many messages
@@ -386,13 +434,24 @@ class VoiceAgentBot:
                             response_buffer = []
 
                     # Send remaining
-                    if response_buffer:
+                    if response_buffer and not self._cancel_flags.get(chat_id, False):
                         await self._send_formatted(update, "\n".join(response_buffer))
+                except asyncio.CancelledError:
+                    logger.info("Task cancelled for chat %s", chat_id)
                 except Exception as e:
                     logger.exception("Error in background prompt for chat %s", chat_id)
                     await update.message.reply_text(f"Error: {e}")  # type: ignore
+                finally:
+                    self._active_tasks.pop(chat_id, None)
+                    self._cancel_flags.pop(chat_id, None)
+                    # Remove the "Working..." message with Stop button
+                    try:
+                        await working_msg.delete()
+                    except Exception:
+                        pass  # Message may already be deleted
 
-        asyncio.create_task(run_prompt())
+        task = asyncio.create_task(run_prompt())
+        self._active_tasks[chat_id] = task
 
     def build_application(self) -> Application:  # type: ignore
         """Build the Telegram application.
