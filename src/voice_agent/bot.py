@@ -38,6 +38,8 @@ class VoiceAgentBot:
         Args:
             settings: Application settings.
         """
+        import asyncio
+
         self.settings = settings
         self.storage = SessionStorage(path=settings.session_storage_path)
         self.session_manager = SessionManager(
@@ -46,6 +48,7 @@ class VoiceAgentBot:
             storage=self.storage,
         )
         self.allowed_chat_ids = settings.get_allowed_chat_ids()
+        self._prompt_locks: dict[int, asyncio.Lock] = {}
 
     def is_allowed(self, chat_id: int) -> bool:
         """Check if a chat ID is allowed to use the bot.
@@ -274,6 +277,14 @@ class VoiceAgentBot:
         self.session_manager.set_cwd(chat_id, cwd)
         await update.message.reply_text(f"Switched to {project} ({cwd})")  # type: ignore
 
+    def _get_prompt_lock(self, chat_id: int) -> "asyncio.Lock":
+        """Get or create a lock for serializing prompts per chat."""
+        import asyncio
+
+        if chat_id not in self._prompt_locks:
+            self._prompt_locks[chat_id] = asyncio.Lock()
+        return self._prompt_locks[chat_id]
+
     async def _handle_prompt(self, chat_id: int, text: str, update: Update) -> None:
         """Handle a prompt to send to Claude."""
         import asyncio
@@ -291,24 +302,31 @@ class VoiceAgentBot:
 
         self.session_manager.set_notify_callback(chat_id, notify_permission)
 
+        lock = self._get_prompt_lock(chat_id)
+
         # Run prompt in background task so bot can still receive messages
         async def run_prompt() -> None:
-            response_buffer = []
-            try:
-                async for chunk in self.session_manager.send_prompt(chat_id, text):
-                    response_buffer.append(chunk)
+            # Notify if we're waiting for another prompt to finish
+            if lock.locked():
+                await update.message.reply_text("(Queued, waiting for previous request...)")  # type: ignore
+            async with lock:
+                logger.info("Processing prompt for chat %s: %s", chat_id, text[:50])
+                response_buffer = []
+                try:
+                    async for chunk in self.session_manager.send_prompt(chat_id, text):
+                        response_buffer.append(chunk)
 
-                    # Send in batches to avoid too many messages
-                    if len(response_buffer) >= 5:
+                        # Send in batches to avoid too many messages
+                        if len(response_buffer) >= 5:
+                            await update.message.reply_text("\n".join(response_buffer))  # type: ignore
+                            response_buffer = []
+
+                    # Send remaining
+                    if response_buffer:
                         await update.message.reply_text("\n".join(response_buffer))  # type: ignore
-                        response_buffer = []
-
-                # Send remaining
-                if response_buffer:
-                    await update.message.reply_text("\n".join(response_buffer))  # type: ignore
-            except Exception as e:
-                logger.exception("Error in background prompt for chat %s", chat_id)
-                await update.message.reply_text(f"Error: {e}")  # type: ignore
+                except Exception as e:
+                    logger.exception("Error in background prompt for chat %s", chat_id)
+                    await update.message.reply_text(f"Error: {e}")  # type: ignore
 
         asyncio.create_task(run_prompt())
 
