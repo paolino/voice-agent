@@ -6,9 +6,10 @@ Handles voice messages and routes them to Claude sessions.
 import logging
 from typing import Any
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
@@ -228,6 +229,36 @@ class VoiceAgentBot:
         else:
             await update.message.reply_text("No pending permission to reject.")  # type: ignore
 
+    async def handle_callback(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Handle inline keyboard button presses."""
+        query = update.callback_query
+        if not query or not query.data:
+            return
+
+        await query.answer()
+
+        chat_id = query.message.chat.id if query.message else None
+        if not chat_id or not self.is_allowed(chat_id):
+            return
+
+        session = self.session_manager.get(chat_id)
+        if not session:
+            await query.edit_message_text("No active session.")
+            return
+
+        if query.data == "approve":
+            if session.permission_handler.approve():
+                await query.edit_message_text("Approved.")
+            else:
+                await query.edit_message_text("No pending permission.")
+        elif query.data == "reject":
+            if session.permission_handler.deny("User rejected via button"):
+                await query.edit_message_text("Rejected.")
+            else:
+                await query.edit_message_text("No pending permission.")
+
     async def _handle_status(self, chat_id: int, update: Update) -> None:
         """Handle status request."""
         status = self.session_manager.get_status(chat_id)
@@ -296,9 +327,13 @@ class VoiceAgentBot:
                 desc = f"Claude wants to run: {input_data.get('command', 'unknown')}"
             elif tool_name in ("Write", "Edit"):
                 desc = f"Claude wants to modify: {input_data.get('file_path', 'unknown')}"
-            await update.message.reply_text(  # type: ignore
-                f"{desc}\n\nSay 'approve' or 'reject'"
-            )
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("Approve", callback_data="approve"),
+                    InlineKeyboardButton("Reject", callback_data="reject"),
+                ]
+            ])
+            await update.message.reply_text(desc, reply_markup=keyboard)  # type: ignore
 
         self.session_manager.set_notify_callback(chat_id, notify_permission)
 
@@ -341,6 +376,7 @@ class VoiceAgentBot:
         # Add handlers
         app.add_handler(CommandHandler("start", self.start_command))
         app.add_handler(CommandHandler("status", self.status_command))
+        app.add_handler(CallbackQueryHandler(self.handle_callback))
         app.add_handler(MessageHandler(filters.VOICE, self.handle_voice))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text))
 
