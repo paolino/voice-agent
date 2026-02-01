@@ -12,6 +12,8 @@ class CommandType(Enum):
 
     APPROVE = auto()
     REJECT = auto()
+    STICKY_APPROVE = auto()
+    CLEAR_STICKY = auto()
     STATUS = auto()
     NEW_SESSION = auto()
     CONTINUE_SESSION = auto()
@@ -46,14 +48,43 @@ STATUS_KEYWORDS = frozenset({"status", "what's happening", "progress", "state"})
 NEW_SESSION_KEYWORDS = frozenset(
     {"new session", "fresh session", "start over", "reset"}
 )
-CONTINUE_SESSION_KEYWORDS = frozenset({
-    "continue", "resume", "continue session", "resume session",
-    "pick up where we left off",
-})
-CANCEL_KEYWORDS = frozenset({
-    "escape", "abort", "interrupt", "stop task", "cancel task",
-    "stop it", "fermati", "basta",
-})
+CONTINUE_SESSION_KEYWORDS = frozenset(
+    {
+        "continue",
+        "resume",
+        "continue session",
+        "resume session",
+        "pick up where we left off",
+    }
+)
+STICKY_APPROVE_KEYWORDS = frozenset(
+    {
+        "always approve",
+        "sticky yes",
+        "remember yes",
+        "always yes",
+        "always allow",
+    }
+)
+CLEAR_STICKY_KEYWORDS = frozenset(
+    {
+        "clear sticky",
+        "clear approvals",
+        "forget approvals",
+    }
+)
+CANCEL_KEYWORDS = frozenset(
+    {
+        "escape",
+        "abort",
+        "interrupt",
+        "stop task",
+        "cancel task",
+        "stop it",
+        "fermati",
+        "basta",
+    }
+)
 
 
 def parse_command(text: str, projects: dict[str, str] | None = None) -> ParsedCommand:
@@ -90,6 +121,16 @@ def parse_command(text: str, projects: dict[str, str] | None = None) -> ParsedCo
     for keyword in CONTINUE_SESSION_KEYWORDS:
         if keyword in lower_text:
             return ParsedCommand(command_type=CommandType.CONTINUE_SESSION, text=text)
+
+    # Check for sticky approve keywords
+    for keyword in STICKY_APPROVE_KEYWORDS:
+        if keyword in lower_text:
+            return ParsedCommand(command_type=CommandType.STICKY_APPROVE, text=text)
+
+    # Check for clear sticky keywords
+    for keyword in CLEAR_STICKY_KEYWORDS:
+        if keyword in lower_text:
+            return ParsedCommand(command_type=CommandType.CLEAR_STICKY, text=text)
 
     # Check for cancel/escape keywords
     for keyword in CANCEL_KEYWORDS:

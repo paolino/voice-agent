@@ -49,7 +49,14 @@ class TestParseCommand:
 
     @pytest.mark.parametrize(
         "text",
-        ["continue", "Continue", "resume", "Resume", "continue session", "resume session"],
+        [
+            "continue",
+            "Continue",
+            "resume",
+            "Resume",
+            "continue session",
+            "resume session",
+        ],
     )
     def test_continue_session_keywords(self, text: str) -> None:
         """Test continue session keyword detection."""
@@ -105,3 +112,54 @@ class TestParseCommand:
         """Test whitespace is handled correctly."""
         result = parse_command("  yes  ")
         assert result.command_type == CommandType.APPROVE
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "always approve",
+            "Always Approve",
+            "sticky yes",
+            "remember yes",
+            "always yes",
+            "always allow",
+        ],
+    )
+    def test_sticky_approve_keywords(self, text: str) -> None:
+        """Test sticky approve keyword detection."""
+        result = parse_command(text)
+        assert result.command_type == CommandType.STICKY_APPROVE
+        assert result.text == text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "clear sticky",
+            "Clear Sticky",
+            "clear approvals",
+            "forget approvals",
+        ],
+    )
+    def test_clear_sticky_keywords(self, text: str) -> None:
+        """Test clear sticky keyword detection."""
+        result = parse_command(text)
+        assert result.command_type == CommandType.CLEAR_STICKY
+        assert result.text == text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "escape",
+            "abort",
+            "interrupt",
+            "stop task",
+            "cancel task",
+            "stop it",
+            "fermati",
+            "basta",
+        ],
+    )
+    def test_cancel_keywords(self, text: str) -> None:
+        """Test cancel keyword detection."""
+        result = parse_command(text)
+        assert result.command_type == CommandType.CANCEL
+        assert result.text == text
