@@ -326,7 +326,8 @@ class VoiceAgentBot:
             if task and not task.done():
                 self._cancel_flags[chat_id] = True
                 task.cancel()
-                await query.edit_message_text("⏹️ Task cancelled.")
+                # Don't edit message here - let run_prompt() handle cleanup
+                # to avoid race condition with the finally block
             else:
                 await query.edit_message_text("No running task to cancel.")
 
@@ -489,11 +490,15 @@ class VoiceAgentBot:
                     logger.exception("Error in background prompt for chat %s", chat_id)
                     await update.message.reply_text(f"Error: {e}")  # type: ignore
                 finally:
+                    was_cancelled = self._cancel_flags.get(chat_id, False)
                     self._active_tasks.pop(chat_id, None)
                     self._cancel_flags.pop(chat_id, None)
-                    # Remove the "Working..." message with Stop button
+                    # Update or remove the "Working..." message
                     with contextlib.suppress(Exception):
-                        await working_msg.delete()
+                        if was_cancelled:
+                            await working_msg.edit_text("⏹️ Task cancelled.")
+                        else:
+                            await working_msg.delete()
 
         task = asyncio.create_task(run_prompt())
         self._active_tasks[chat_id] = task
