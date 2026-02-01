@@ -16,6 +16,7 @@ class CommandType(Enum):
     NEW_SESSION = auto()
     CONTINUE_SESSION = auto()
     SWITCH_PROJECT = auto()
+    CANCEL = auto()
     PROMPT = auto()
 
 
@@ -42,10 +43,17 @@ REJECT_KEYWORDS = frozenset(
     {"no", "reject", "rejected", "stop", "deny", "denied", "cancel", "nope"}
 )
 STATUS_KEYWORDS = frozenset({"status", "what's happening", "progress", "state"})
-NEW_SESSION_KEYWORDS = frozenset({"new session", "fresh session", "start over", "reset"})
-CONTINUE_SESSION_KEYWORDS = frozenset(
-    {"continue", "resume", "continue session", "resume session", "pick up where we left off"}
+NEW_SESSION_KEYWORDS = frozenset(
+    {"new session", "fresh session", "start over", "reset"}
 )
+CONTINUE_SESSION_KEYWORDS = frozenset({
+    "continue", "resume", "continue session", "resume session",
+    "pick up where we left off",
+})
+CANCEL_KEYWORDS = frozenset({
+    "escape", "abort", "interrupt", "stop task", "cancel task",
+    "stop it", "fermati", "basta",
+})
 
 
 def parse_command(text: str, projects: dict[str, str] | None = None) -> ParsedCommand:
@@ -82,6 +90,11 @@ def parse_command(text: str, projects: dict[str, str] | None = None) -> ParsedCo
     for keyword in CONTINUE_SESSION_KEYWORDS:
         if keyword in lower_text:
             return ParsedCommand(command_type=CommandType.CONTINUE_SESSION, text=text)
+
+    # Check for cancel/escape keywords
+    for keyword in CANCEL_KEYWORDS:
+        if keyword in lower_text:
+            return ParsedCommand(command_type=CommandType.CANCEL, text=text)
 
     # Check for project switch commands
     if projects:
