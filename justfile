@@ -1,8 +1,31 @@
 # Development commands for voice-agent
 
-# Run the bot
+# Run the bot (foreground)
 run:
     python -m voice_agent
+
+# Start bot in background with nix (set ENV_FILE or place .env in project root)
+start:
+    @pkill -f '[v]oice-agent-wrapped' 2>/dev/null || true
+    @sleep 1
+    @bash -c 'set -a && source "${ENV_FILE:-.env}" && nix run . > /tmp/voice-agent.log 2>&1 &'
+    @sleep 4
+    @echo "Bot started. Logs: /tmp/voice-agent.log"
+
+# Stop the bot
+stop:
+    @pkill -f '[v]oice-agent-wrapped' 2>/dev/null && echo "Bot stopped" || echo "Bot not running"
+
+# Restart the bot
+restart: stop start
+
+# Show bot logs
+logs:
+    @tail -50 /tmp/voice-agent.log | grep -v getUpdates
+
+# Follow bot logs
+logs-follow:
+    @tail -f /tmp/voice-agent.log | grep -v getUpdates
 
 # Run all tests
 test:
