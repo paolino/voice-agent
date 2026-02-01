@@ -1,0 +1,38 @@
+# Changelog
+
+## 0.1.0 (2026-02-01)
+
+
+### Features
+
+* add Docker build/run commands to justfile ([f2e2a19](https://github.com/paolino/voice-agent/commit/f2e2a19fba91b08a51c7dfc2e28947dd1525da7c))
+* add docs build to flake and GitHub Pages deployment ([1950a5d](https://github.com/paolino/voice-agent/commit/1950a5dd82dcdf1d75f8321aa5a4472cda36ea4d)), closes [#8](https://github.com/paolino/voice-agent/issues/8)
+* add inline keyboard buttons for permission approval ([1a7e539](https://github.com/paolino/voice-agent/commit/1a7e539e6fb21543cfaa6df0e313028988a4bef4)), closes [#17](https://github.com/paolino/voice-agent/issues/17)
+* add nix-based Docker image build ([402c16f](https://github.com/paolino/voice-agent/commit/402c16f1b8ccc3bb0038fab1bfa850b4cb16f841))
+* add session persistence for M2 ([6babcf0](https://github.com/paolino/voice-agent/commit/6babcf0b14175940946f94bab79d66890ef2db97))
+* add tests as nix flake output ([554507b](https://github.com/paolino/voice-agent/commit/554507bdf23d03221af49aaa927740d4117c80e9))
+* convert Markdown to Telegram-compatible formatting ([bea8e25](https://github.com/paolino/voice-agent/commit/bea8e2550b31a748eb6f29e3bce2297636b166a8)), closes [#16](https://github.com/paolino/voice-agent/issues/16)
+* improve permission approval/rejection feedback ([9907c99](https://github.com/paolino/voice-agent/commit/9907c9963ad9083922a0764088d880c45daf6a5c)), closes [#21](https://github.com/paolino/voice-agent/issues/21)
+* initial implementation of voice-agent ([97fd764](https://github.com/paolino/voice-agent/commit/97fd7649bc4e0fc75ee8ef2629ca397399142d5d))
+* support text messages from Telegram keyboard ([bcc0156](https://github.com/paolino/voice-agent/commit/bcc015642c8b9c9e380c08e523eaf8d83d95bdd7)), closes [#2](https://github.com/paolino/voice-agent/issues/2)
+* switch to Claude Agent SDK for persistent sessions ([ae0ebfa](https://github.com/paolino/voice-agent/commit/ae0ebfa3e236aec5ab965be98c36ac76be833b49))
+* use italic formatting for transcription messages ([08baff0](https://github.com/paolino/voice-agent/commit/08baff05ea454aa229302bac64dab426f629b1d7)), closes [#19](https://github.com/paolino/voice-agent/issues/19)
+* use mermaid diagrams in documentation ([c19e1cf](https://github.com/paolino/voice-agent/commit/c19e1cfee9360c7a53f9e2f5d159e53409dacde2))
+* wire permission handler to Claude SDK canUseTool callback ([62d6c04](https://github.com/paolino/voice-agent/commit/62d6c04977cceca63eea550d2acbb312c6381687)), closes [#3](https://github.com/paolino/voice-agent/issues/3)
+
+
+### Bug Fixes
+
+* bundle conftest.py with test suite and fix asyncio mode ([9f9ec89](https://github.com/paolino/voice-agent/commit/9f9ec89a4c00f44e8a8be3de5eb3e8496d0cabf7))
+* resolve permission flow blocking and add bot management commands ([5c8dc91](https://github.com/paolino/voice-agent/commit/5c8dc9122e7f88e4c85cd76e39148aff62bb9e50))
+* serialize prompt handling per chat to prevent message interleaving ([5b8c274](https://github.com/paolino/voice-agent/commit/5b8c27474ece92fd99e7d0e75cf24e34ebfd0e78))
+* use --continue flag to resume Claude sessions ([70ab0f4](https://github.com/paolino/voice-agent/commit/70ab0f45df620c3ac4d5c696e428df1bda181ce6))
+* use 'audio' field for whisper-server API ([cd908de](https://github.com/paolino/voice-agent/commit/cd908deb9a592b40d58cd4c6f0c9e34618001523))
+* use system Claude CLI instead of bundled SDK version ([31b9c39](https://github.com/paolino/voice-agent/commit/31b9c39b5db2a85dcb1b46ba174f6434af415649))
+
+
+### Documentation
+
+* add README with link to documentation ([7b18414](https://github.com/paolino/voice-agent/commit/7b1841413dfca959d151c3401dac504a07aa84a8))
+* document flake decisions ([fc6ed89](https://github.com/paolino/voice-agent/commit/fc6ed893612adb3e9945c5263f45b65dd42bb430))
+* update architecture docs with session persistence ([da09b52](https://github.com/paolino/voice-agent/commit/da09b52bcb363c75fd3816bb4b3558f671bceb1a))
