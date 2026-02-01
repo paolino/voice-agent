@@ -1,0 +1,68 @@
+site_name: voice-agent
+site_description: Voice control for Claude Code via Telegram
+repo_url: https://github.com/paolino/voice-agent
+repo_name: paolino/voice-agent
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - search.suggest
+    - content.code.copy
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            show_root_heading: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Configuration: getting-started/configuration.md
+      - Quickstart: getting-started/quickstart.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - SDK Integration: architecture/sdk-integration.md
+      - Permission Model: architecture/permission-model.md
+      - Session Lifecycle: architecture/session-lifecycle.md
+  - Guides:
+      - Voice Commands: guides/voice-commands.md
+      - Multi-session: guides/multi-session.md
+      - Deployment: guides/deployment.md
+      - Troubleshooting: guides/troubleshooting.md
+  - API Reference:
+      - Config: api/config.md
+      - Bot: api/bot.md
+      - Router: api/router.md
+      - Transcribe: api/transcribe.md
+      - Sessions: api/sessions.md
+  - Development:
+      - Contributing: development/contributing.md
+      - Testing: development/testing.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
