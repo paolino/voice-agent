@@ -276,6 +276,8 @@ class VoiceAgentBot:
 
     async def _handle_prompt(self, chat_id: int, text: str, update: Update) -> None:
         """Handle a prompt to send to Claude."""
+        import asyncio
+
         # Set up notification callback for this chat
         async def notify_permission(tool_name: str, input_data: dict[str, Any]) -> None:
             desc = f"Claude wants to use {tool_name}"
@@ -289,19 +291,26 @@ class VoiceAgentBot:
 
         self.session_manager.set_notify_callback(chat_id, notify_permission)
 
-        # Send prompt and stream responses
-        response_buffer = []
-        async for chunk in self.session_manager.send_prompt(chat_id, text):
-            response_buffer.append(chunk)
+        # Run prompt in background task so bot can still receive messages
+        async def run_prompt() -> None:
+            response_buffer = []
+            try:
+                async for chunk in self.session_manager.send_prompt(chat_id, text):
+                    response_buffer.append(chunk)
 
-            # Send in batches to avoid too many messages
-            if len(response_buffer) >= 5:
-                await update.message.reply_text("\n".join(response_buffer))  # type: ignore
-                response_buffer = []
+                    # Send in batches to avoid too many messages
+                    if len(response_buffer) >= 5:
+                        await update.message.reply_text("\n".join(response_buffer))  # type: ignore
+                        response_buffer = []
 
-        # Send remaining
-        if response_buffer:
-            await update.message.reply_text("\n".join(response_buffer))  # type: ignore
+                # Send remaining
+                if response_buffer:
+                    await update.message.reply_text("\n".join(response_buffer))  # type: ignore
+            except Exception as e:
+                logger.exception("Error in background prompt for chat %s", chat_id)
+                await update.message.reply_text(f"Error: {e}")  # type: ignore
+
+        asyncio.create_task(run_prompt())
 
     def build_application(self) -> Application:  # type: ignore
         """Build the Telegram application.
