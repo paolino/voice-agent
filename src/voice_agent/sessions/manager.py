@@ -4,17 +4,19 @@ Manages Claude SDK client instances and their lifecycle.
 """
 
 import asyncio
-import subprocess
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from voice_agent.sessions.permissions import PermissionHandler
 
 if TYPE_CHECKING:
+    from claude_agent_sdk import ClaudeSDKClient
     from voice_agent.sessions.storage import SessionStorage, StoredSession
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -27,7 +29,7 @@ class Session:
         created_at: When the session was created.
         message_count: Number of messages exchanged.
         permission_handler: Handler for permission requests.
-        process: The Claude subprocess if running.
+        sdk_client: Persistent ClaudeSDKClient instance.
         claude_session_id: Claude CLI session ID for resume.
     """
 
@@ -36,7 +38,7 @@ class Session:
     created_at: datetime = field(default_factory=datetime.now)
     message_count: int = 0
     permission_handler: PermissionHandler = field(default_factory=PermissionHandler)
-    process: subprocess.Popen[str] | None = None
+    sdk_client: "ClaudeSDKClient | None" = None
     claude_session_id: str | None = None
 
     def get_status(self) -> str:
@@ -168,7 +170,7 @@ class SessionManager:
             self._persist_session(session)
         return self.sessions[chat_id]
 
-    def create_new(self, chat_id: int, cwd: str | None = None) -> Session:
+    async def create_new_async(self, chat_id: int, cwd: str | None = None) -> Session:
         """Create a new session, replacing any existing one.
 
         Args:
@@ -181,8 +183,37 @@ class SessionManager:
         # Clean up old session if exists
         if chat_id in self.sessions:
             old_session = self.sessions[chat_id]
-            if old_session.process:
-                old_session.process.terminate()
+            await self._close_client(old_session)
+
+        effective_cwd = cwd or self.default_cwd
+        session = Session(
+            chat_id=chat_id,
+            cwd=effective_cwd,
+            permission_handler=PermissionHandler(
+                timeout=self.permission_timeout,
+                notify_callback=self._notify_callbacks.get(chat_id),
+            ),
+        )
+        self.sessions[chat_id] = session
+        self._persist_session(session)
+        return session
+
+    def create_new(self, chat_id: int, cwd: str | None = None) -> Session:
+        """Create a new session synchronously (closes client in background).
+
+        Args:
+            chat_id: Telegram chat ID.
+            cwd: Working directory.
+
+        Returns:
+            The new session.
+        """
+        # Clean up old session if exists
+        if chat_id in self.sessions:
+            old_session = self.sessions[chat_id]
+            if old_session.sdk_client is not None:
+                # Schedule async cleanup
+                asyncio.create_task(self._close_client(old_session))
 
         effective_cwd = cwd or self.default_cwd
         session = Session(
@@ -223,13 +254,47 @@ class SessionManager:
         self._persist_session(session)
         return session
 
+    async def _get_or_create_client(self, session: Session) -> "ClaudeSDKClient":
+        """Get or create a ClaudeSDKClient for the session.
+
+        Args:
+            session: The session to get/create client for.
+
+        Returns:
+            ClaudeSDKClient instance.
+        """
+        if session.sdk_client is None:
+            from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+
+            options = ClaudeAgentOptions(
+                cwd=session.cwd,
+                permission_mode="acceptEdits",  # Auto-accept for now
+            )
+            session.sdk_client = ClaudeSDKClient(options=options)
+            await session.sdk_client.__aenter__()
+            logger.info("Created new SDK client for chat %s", session.chat_id)
+
+        return session.sdk_client
+
+    async def _close_client(self, session: Session) -> None:
+        """Close the SDK client for a session.
+
+        Args:
+            session: The session whose client to close.
+        """
+        if session.sdk_client is not None:
+            try:
+                await session.sdk_client.__aexit__(None, None, None)
+            except Exception as e:
+                logger.warning("Error closing SDK client: %s", e)
+            session.sdk_client = None
+
     async def send_prompt(
         self, chat_id: int, prompt: str, resume: bool = True
     ) -> AsyncIterator[str]:
         """Send a prompt to the session and stream responses.
 
-        This uses the Claude CLI in a subprocess for now.
-        Future versions will use the SDK directly.
+        Uses ClaudeSDKClient for persistent sessions - no token reload.
 
         Args:
             chat_id: Telegram chat ID.
@@ -239,68 +304,38 @@ class SessionManager:
         Yields:
             Response chunks from Claude.
         """
+        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+
         session = self.get_or_create(chat_id)
         session.message_count += 1
 
-        # Use Claude CLI with --print flag for non-interactive output
-        cmd = [
-            "claude",
-            "--print",
-            "--dangerously-skip-permissions",
-        ]
-
-        # Continue previous session in this working directory
-        # --continue resumes the most recent conversation
-        if resume and session.message_count > 1:
-            cmd.append("--continue")
-
-        cmd.append(prompt)
-
         try:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=session.cwd,
-            )
+            client = await self._get_or_create_client(session)
+            await client.query(prompt)
 
-            buffer = ""
-            while True:
-                if process.stdout is None:
-                    break
-
-                chunk = await process.stdout.read(1024)
-                if not chunk:
-                    break
-
-                text = chunk.decode("utf-8", errors="replace")
-                buffer += text
-
-                # Yield complete lines
-                while "\n" in buffer:
-                    line, buffer = buffer.split("\n", 1)
-                    if line.strip():
-                        yield line
-
-            # Yield any remaining content
-            if buffer.strip():
-                yield buffer.strip()
-
-            await process.wait()
-
-            # Check for errors
-            if process.returncode != 0 and process.stderr:
-                stderr = await process.stderr.read()
-                if stderr:
-                    yield f"Error: {stderr.decode('utf-8', errors='replace')}"
+            async for msg in client.receive_response():
+                if isinstance(msg, AssistantMessage):
+                    for block in msg.content:
+                        if isinstance(block, TextBlock):
+                            yield block.text
+                elif isinstance(msg, ResultMessage):
+                    if msg.total_cost_usd:
+                        logger.info(
+                            "Chat %s message cost: $%.4f",
+                            chat_id,
+                            msg.total_cost_usd,
+                        )
 
             # Persist updated session
             self._persist_session(session)
 
-        except FileNotFoundError:
-            yield "Error: claude CLI not found. Make sure it's installed and in PATH."
+        except ImportError:
+            yield "Error: claude-agent-sdk not installed. Install with: pip install claude-agent-sdk"
         except Exception as e:
+            logger.exception("Error in send_prompt for chat %s", chat_id)
             yield f"Error: {e}"
+            # Close client on error so it can be recreated
+            await self._close_client(session)
 
     def get_status(self, chat_id: int) -> str | None:
         """Get status of a session.
@@ -316,8 +351,8 @@ class SessionManager:
             return None
         return session.get_status()
 
-    def delete_session(self, chat_id: int) -> bool:
-        """Delete a session.
+    async def delete_session_async(self, chat_id: int) -> bool:
+        """Delete a session asynchronously.
 
         Args:
             chat_id: Telegram chat ID.
@@ -329,8 +364,30 @@ class SessionManager:
             return False
 
         session = self.sessions[chat_id]
-        if session.process:
-            session.process.terminate()
+        await self._close_client(session)
+
+        del self.sessions[chat_id]
+
+        if self.storage:
+            self.storage.delete(chat_id)
+
+        return True
+
+    def delete_session(self, chat_id: int) -> bool:
+        """Delete a session synchronously.
+
+        Args:
+            chat_id: Telegram chat ID.
+
+        Returns:
+            True if session was deleted, False if not found.
+        """
+        if chat_id not in self.sessions:
+            return False
+
+        session = self.sessions[chat_id]
+        if session.sdk_client is not None:
+            asyncio.create_task(self._close_client(session))
 
         del self.sessions[chat_id]
 
