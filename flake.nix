@@ -92,17 +92,33 @@
 
         # Python environment with test dependencies
         testEnv = python.withPackages (ps: [
-          voiceAgent
           ps.pytest
           ps.pytest-asyncio
           ps.pytest-cov
           ps.pytest-httpx
           ps.pytest-mock
+          ps.python-telegram-bot
+          ps.httpx
+          ps.pydantic
+          ps.pydantic-settings
         ]);
+
+        # Copy tests and conftest together
+        testSuite = pkgs.runCommand "voice-agent-test-suite" {} ''
+          mkdir -p $out/unit
+          cp ${./tests/conftest.py} $out/conftest.py
+          cp -r ${./tests/unit}/* $out/unit/
+        '';
 
         # Test runner as a script
         testRunner = pkgs.writeShellScriptBin "voice-agent-tests" ''
-          exec ${testEnv}/bin/python -m pytest ${./tests/unit} -v "$@"
+          export PYTHONPATH="${./src}:$PYTHONPATH"
+          exec ${testEnv}/bin/python -m pytest ${testSuite}/unit \
+            --confcutdir=${testSuite} \
+            -p pytest_asyncio \
+            -o asyncio_mode=auto \
+            -o asyncio_default_fixture_loop_scope=function \
+            -v "$@"
         '';
 
         devShell = pkgs.mkShell {
