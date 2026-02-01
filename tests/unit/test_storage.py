@@ -122,9 +122,24 @@ class TestSessionStorage:
         storage = SessionStorage(path=tmp_path / "sessions.json")
 
         sessions = [
-            StoredSession(chat_id=123, cwd="/code/a", created_at="2024-01-15T10:00:00", message_count=1),
-            StoredSession(chat_id=456, cwd="/code/b", created_at="2024-01-15T11:00:00", message_count=2),
-            StoredSession(chat_id=789, cwd="/code/c", created_at="2024-01-15T12:00:00", message_count=3),
+            StoredSession(
+                chat_id=123,
+                cwd="/code/a",
+                created_at="2024-01-15T10:00:00",
+                message_count=1,
+            ),
+            StoredSession(
+                chat_id=456,
+                cwd="/code/b",
+                created_at="2024-01-15T11:00:00",
+                message_count=2,
+            ),
+            StoredSession(
+                chat_id=789,
+                cwd="/code/c",
+                created_at="2024-01-15T12:00:00",
+                message_count=3,
+            ),
         ]
 
         for session in sessions:
