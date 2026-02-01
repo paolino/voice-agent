@@ -249,9 +249,10 @@ class SessionManager:
             "--dangerously-skip-permissions",
         ]
 
-        # Resume existing session if available
-        if resume and session.claude_session_id:
-            cmd.extend(["--resume", session.claude_session_id])
+        # Continue previous session in this working directory
+        # --continue resumes the most recent conversation
+        if resume and session.message_count > 1:
+            cmd.append("--continue")
 
         cmd.append(prompt)
 
