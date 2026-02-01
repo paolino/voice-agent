@@ -65,7 +65,7 @@ Anything else is sent directly to Claude:
 
 ```
 You: "list all python files"
-Bot: Heard: list all python files
+Bot: list all python files (italic)
 Bot: Here are the Python files...
 ```
 
@@ -73,10 +73,9 @@ Bot: Here are the Python files...
 
 ```
 You: "create a new file called test.py"
-Bot: Heard: create a new file called test.py
+Bot: create a new file called test.py (italic)
 Bot: Claude wants to: Write file: /code/test.py
-     Say 'approve' or 'reject'
-You: "approve"
+     [Approve] [Reject] buttons
 Bot: Approved.
 Bot: Created test.py with...
 ```
@@ -85,7 +84,7 @@ Bot: Created test.py with...
 
 ```
 You: "work on whisper"
-Bot: Heard: work on whisper
+Bot: work on whisper (italic)
 Bot: Switched to whisper (/code/whisper-server)
 
 You: "show the main file"

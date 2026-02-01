@@ -169,7 +169,8 @@ class VoiceAgentBot:
         # Transcribe
         try:
             text = await transcribe(bytes(audio_bytes), self.settings.whisper_url)
-            await update.message.reply_text(f"Heard: {text}")
+            from html import escape
+            await update.message.reply_text(f"<i>{escape(text)}</i>", parse_mode="HTML")
         except TranscriptionError as e:
             logger.error("Transcription failed: %s", e)
             await update.message.reply_text(f"Transcription failed: {e}")

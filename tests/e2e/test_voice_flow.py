@@ -49,9 +49,9 @@ class TestVoiceFlow:
         # Handle voice message
         await e2e_bot.handle_voice(update, context)
 
-        # Verify transcription was shown
+        # Verify transcription was shown (italic formatted)
         calls = update.message.reply_text.call_args_list
-        assert any("Heard: status" in str(call) for call in calls)
+        assert any("<i>status</i>" in str(call) for call in calls)
 
     async def test_permission_approval_flow(
         self,
