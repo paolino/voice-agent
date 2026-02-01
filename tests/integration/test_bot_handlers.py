@@ -80,7 +80,7 @@ class TestVoiceAgentBot:
         assert "Working directory" in call_args
 
     async def test_handle_transcription_approve(self, bot: VoiceAgentBot) -> None:
-        """Test handling approval transcription."""
+        """Test handling approval transcription (silent - no feedback)."""
         # Create session with pending permission
         from voice_agent.sessions.permissions import PendingPermission
 
@@ -95,7 +95,8 @@ class TestVoiceAgentBot:
 
         await bot._handle_transcription(123, "yes", update)
 
-        update.message.reply_text.assert_called_once_with("Approved.")
+        # Silent approval - no message sent
+        update.message.reply_text.assert_not_called()
 
     async def test_handle_transcription_reject(self, bot: VoiceAgentBot) -> None:
         """Test handling rejection transcription."""
@@ -103,7 +104,7 @@ class TestVoiceAgentBot:
 
         session = bot.session_manager.get_or_create(123)
         session.permission_handler.pending = PendingPermission(
-            tool_name="Write", input_data={}
+            tool_name="Write", input_data={"file_path": "/tmp/test.txt"}
         )
 
         update = MagicMock()
@@ -112,7 +113,9 @@ class TestVoiceAgentBot:
 
         await bot._handle_transcription(123, "no", update)
 
-        update.message.reply_text.assert_called_once_with("Rejected.")
+        update.message.reply_text.assert_called_once_with(
+            "❌ <b>Rejected:</b> Write file: /tmp/test.txt", parse_mode="HTML"
+        )
 
     async def test_handle_transcription_new_session(self, bot: VoiceAgentBot) -> None:
         """Test handling new session request."""
@@ -194,7 +197,7 @@ class TestVoiceAgentBot:
         update.message.reply_text.assert_not_called()
 
     async def test_handle_text_approve(self, bot: VoiceAgentBot) -> None:
-        """Test text approval handling."""
+        """Test text approval handling (silent - no feedback)."""
         from voice_agent.sessions.permissions import PendingPermission
 
         session = bot.session_manager.get_or_create(123)
@@ -209,7 +212,8 @@ class TestVoiceAgentBot:
 
         await bot.handle_text(update, MagicMock())
 
-        update.message.reply_text.assert_called_once_with("Approved.")
+        # Silent approval - no message sent
+        update.message.reply_text.assert_not_called()
 
     async def test_handle_text_no_message(self, bot: VoiceAgentBot) -> None:
         """Test text handler with missing message."""
