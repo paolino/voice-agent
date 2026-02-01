@@ -1,6 +1,7 @@
 {
   pkgs,
   version,
+  claudeAgentSdk,
 }:
 let
   pythonEnv = pkgs.python3.withPackages (
@@ -9,6 +10,7 @@ let
       httpx
       pydantic
       pydantic-settings
+      claudeAgentSdk
     ]
   );
 
