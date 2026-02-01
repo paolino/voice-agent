@@ -22,7 +22,34 @@
     flake-utils.lib.eachDefaultSystem (
       system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
+        # =====================================================================
+        # Package Overrides
+        # =====================================================================
+        # Why apscheduler.doCheck = false:
+        #   - apscheduler 3.11.1 has a flaky test in CI environments:
+        #     test_submit_job[processpool-pytz-executed] fails with
+        #     "assert 16384 == 4096" due to timing/resource constraints
+        #   - python-telegram-bot depends on apscheduler, so this blocks builds
+        # =====================================================================
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [
+            (final: prev: {
+              python311 = prev.python311.override {
+                packageOverrides = pyFinal: pyPrev: {
+                  # apscheduler has flaky tests in CI (processpool timing issues)
+                  apscheduler = pyPrev.apscheduler.overrideAttrs (old: {
+                    doCheck = false;
+                  });
+                  # python-telegram-bot's test deps include apscheduler
+                  python-telegram-bot = pyPrev.python-telegram-bot.overrideAttrs (old: {
+                    doCheck = false;
+                  });
+                };
+              };
+            })
+          ];
+        };
 
         version = "0.1.0";
 

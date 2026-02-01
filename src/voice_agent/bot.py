@@ -77,12 +77,12 @@ class VoiceAgentBot:
             return
 
         await update.message.reply_text(  # type: ignore
-            "Voice Agent ready. Send a voice message to interact with Claude Code.\n\n"
+            "Voice Agent ready. Send a voice or text message to interact with Claude Code.\n\n"
             "Commands:\n"
-            "- Say 'status' to check session state\n"
-            "- Say 'new session' to start fresh\n"
-            "- Say 'continue' to resume previous session\n"
-            "- Say 'yes/approve' or 'no/reject' for permission prompts"
+            "- 'status' to check session state\n"
+            "- 'new session' to start fresh\n"
+            "- 'continue' to resume previous session\n"
+            "- 'yes/approve' or 'no/reject' for permission prompts"
         )
 
     async def status_command(
@@ -106,6 +106,30 @@ class VoiceAgentBot:
             await update.message.reply_text(status)  # type: ignore
         else:
             await update.message.reply_text("No active session.")  # type: ignore
+
+    async def handle_text(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Handle incoming text messages.
+
+        Args:
+            update: Telegram update.
+            context: Callback context.
+        """
+        if not update.effective_chat or not update.message:
+            return
+
+        chat_id = update.effective_chat.id
+        if not self.is_allowed(chat_id):
+            logger.debug("Ignoring text from non-allowed chat %s", chat_id)
+            return
+
+        text = update.message.text
+        if not text:
+            return
+
+        logger.info("Received text from chat %s: %s", chat_id, text[:50])
+        await self._handle_transcription(chat_id, text, update)
 
     async def handle_voice(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -291,6 +315,7 @@ class VoiceAgentBot:
         app.add_handler(CommandHandler("start", self.start_command))
         app.add_handler(CommandHandler("status", self.status_command))
         app.add_handler(MessageHandler(filters.VOICE, self.handle_voice))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text))
 
         return app
 

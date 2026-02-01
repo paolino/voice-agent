@@ -11,7 +11,7 @@ from voice_agent.sessions import PermissionHandler, SessionManager
 
 
 @pytest.fixture
-def mock_settings() -> Settings:
+def mock_settings(tmp_path: Any) -> Settings:
     """Create mock settings for testing."""
     return Settings(
         telegram_bot_token="test-token",
@@ -20,6 +20,7 @@ def mock_settings() -> Settings:
         default_cwd="/code",
         permission_timeout=10,
         projects={"whisper": "/code/whisper-server", "agent": "/code/voice-agent"},
+        session_storage_path=str(tmp_path / "test_sessions.json"),
     )
 
 
