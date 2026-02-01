@@ -163,3 +163,20 @@ class TestParseCommand:
         result = parse_command(text)
         assert result.command_type == CommandType.CANCEL
         assert result.text == text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "list approvals",
+            "List Approvals",
+            "show approvals",
+            "approvals",
+            "what's approved",
+            "whats approved",
+        ],
+    )
+    def test_list_approvals_keywords(self, text: str) -> None:
+        """Test list approvals keyword detection."""
+        result = parse_command(text)
+        assert result.command_type == CommandType.LIST_APPROVALS
+        assert result.text == text

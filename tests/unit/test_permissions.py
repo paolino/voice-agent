@@ -375,3 +375,62 @@ class TestStickyApprovals:
         """Test clearing when no sticky approvals."""
         count = permission_handler.clear_sticky_approvals()
         assert count == 0
+
+    def test_remove_sticky_approval(
+        self, permission_handler: PermissionHandler
+    ) -> None:
+        """Test removing a sticky approval by index."""
+        permission_handler.sticky_approvals.append(StickyApproval(tool_name="Bash"))
+        permission_handler.sticky_approvals.append(StickyApproval(tool_name="Write"))
+        permission_handler.sticky_approvals.append(StickyApproval(tool_name="Edit"))
+
+        removed = permission_handler.remove_sticky_approval(1)
+
+        assert removed is not None
+        assert removed.tool_name == "Write"
+        assert len(permission_handler.get_sticky_approvals()) == 2
+        assert permission_handler.get_sticky_approvals()[0].tool_name == "Bash"
+        assert permission_handler.get_sticky_approvals()[1].tool_name == "Edit"
+
+    def test_remove_sticky_approval_first(
+        self, permission_handler: PermissionHandler
+    ) -> None:
+        """Test removing first sticky approval."""
+        permission_handler.sticky_approvals.append(StickyApproval(tool_name="Bash"))
+        permission_handler.sticky_approvals.append(StickyApproval(tool_name="Write"))
+
+        removed = permission_handler.remove_sticky_approval(0)
+
+        assert removed is not None
+        assert removed.tool_name == "Bash"
+        assert len(permission_handler.get_sticky_approvals()) == 1
+
+    def test_remove_sticky_approval_last(
+        self, permission_handler: PermissionHandler
+    ) -> None:
+        """Test removing last sticky approval."""
+        permission_handler.sticky_approvals.append(StickyApproval(tool_name="Bash"))
+        permission_handler.sticky_approvals.append(StickyApproval(tool_name="Write"))
+
+        removed = permission_handler.remove_sticky_approval(1)
+
+        assert removed is not None
+        assert removed.tool_name == "Write"
+        assert len(permission_handler.get_sticky_approvals()) == 1
+
+    def test_remove_sticky_approval_invalid_index(
+        self, permission_handler: PermissionHandler
+    ) -> None:
+        """Test removing with invalid index returns None."""
+        permission_handler.sticky_approvals.append(StickyApproval(tool_name="Bash"))
+
+        assert permission_handler.remove_sticky_approval(-1) is None
+        assert permission_handler.remove_sticky_approval(1) is None
+        assert permission_handler.remove_sticky_approval(100) is None
+        assert len(permission_handler.get_sticky_approvals()) == 1
+
+    def test_remove_sticky_approval_empty(
+        self, permission_handler: PermissionHandler
+    ) -> None:
+        """Test removing from empty list returns None."""
+        assert permission_handler.remove_sticky_approval(0) is None

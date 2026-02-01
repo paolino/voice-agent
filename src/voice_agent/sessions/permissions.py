@@ -347,3 +347,16 @@ class PermissionHandler:
         count = len(self.sticky_approvals)
         self.sticky_approvals.clear()
         return count
+
+    def remove_sticky_approval(self, index: int) -> StickyApproval | None:
+        """Remove a sticky approval by index.
+
+        Args:
+            index: Index of the approval to remove (0-based).
+
+        Returns:
+            The removed StickyApproval or None if index invalid.
+        """
+        if 0 <= index < len(self.sticky_approvals):
+            return self.sticky_approvals.pop(index)
+        return None

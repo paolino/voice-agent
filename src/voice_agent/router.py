@@ -14,6 +14,7 @@ class CommandType(Enum):
     REJECT = auto()
     STICKY_APPROVE = auto()
     CLEAR_STICKY = auto()
+    LIST_APPROVALS = auto()
     STATUS = auto()
     NEW_SESSION = auto()
     CONTINUE_SESSION = auto()
@@ -71,6 +72,15 @@ CLEAR_STICKY_KEYWORDS = frozenset(
         "clear sticky",
         "clear approvals",
         "forget approvals",
+    }
+)
+LIST_APPROVALS_KEYWORDS = frozenset(
+    {
+        "list approvals",
+        "show approvals",
+        "approvals",
+        "what's approved",
+        "whats approved",
     }
 )
 CANCEL_KEYWORDS = frozenset(
@@ -131,6 +141,11 @@ def parse_command(text: str, projects: dict[str, str] | None = None) -> ParsedCo
     for keyword in CLEAR_STICKY_KEYWORDS:
         if keyword in lower_text:
             return ParsedCommand(command_type=CommandType.CLEAR_STICKY, text=text)
+
+    # Check for list approvals keywords
+    for keyword in LIST_APPROVALS_KEYWORDS:
+        if keyword in lower_text:
+            return ParsedCommand(command_type=CommandType.LIST_APPROVALS, text=text)
 
     # Check for cancel/escape keywords
     for keyword in CANCEL_KEYWORDS:

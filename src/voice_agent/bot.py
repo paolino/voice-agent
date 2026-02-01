@@ -218,6 +218,8 @@ class VoiceAgentBot:
             await self._handle_switch_project(chat_id, command.project, update)
         elif command.command_type == CommandType.CANCEL:
             await self._handle_cancel(chat_id, update)
+        elif command.command_type == CommandType.LIST_APPROVALS:
+            await self._handle_list_approvals(chat_id, update)
         else:
             await self._handle_prompt(chat_id, command.text, update)
 
@@ -277,6 +279,55 @@ class VoiceAgentBot:
         else:
             await update.message.reply_text("No sticky approvals to clear.")  # type: ignore
 
+    async def _handle_list_approvals(self, chat_id: int, update: Update) -> None:
+        """Handle listing all sticky approvals with revoke buttons."""
+        session = self.session_manager.get(chat_id)
+        if not session:
+            await update.message.reply_text("No active session.")  # type: ignore
+            return
+
+        approvals = session.permission_handler.get_sticky_approvals()
+        if not approvals:
+            await update.message.reply_text("No auto-approvals configured.")  # type: ignore
+            return
+
+        # Build message with list of approvals
+        lines = ["<b>Auto-approvals:</b>"]
+        for i, approval in enumerate(approvals):
+            lines.append(f"{i + 1}. {approval.describe()}")
+
+        # Build keyboard with revoke buttons (max 4 per row)
+        buttons = [
+            InlineKeyboardButton(f"❌ {i + 1}", callback_data=f"revoke_{i}")
+            for i in range(len(approvals))
+        ]
+        # Chunk into rows of 4
+        rows = [buttons[i : i + 4] for i in range(0, len(buttons), 4)]
+        rows.append([InlineKeyboardButton("🗑️ Revoke All", callback_data="revoke_all")])
+        keyboard = InlineKeyboardMarkup(rows)
+
+        await update.message.reply_text(  # type: ignore
+            "\n".join(lines), reply_markup=keyboard, parse_mode="HTML"
+        )
+
+    async def approvals_command(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Handle /approvals command.
+
+        Args:
+            update: Telegram update.
+            context: Callback context.
+        """
+        if not update.effective_chat:
+            return
+
+        chat_id = update.effective_chat.id
+        if not self.is_allowed(chat_id):
+            return
+
+        await self._handle_list_approvals(chat_id, update)
+
     async def handle_callback(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
@@ -330,6 +381,23 @@ class VoiceAgentBot:
                 # to avoid race condition with the finally block
             else:
                 await query.edit_message_text("No running task to cancel.")
+        elif query.data == "revoke_all":
+            count = session.permission_handler.clear_sticky_approvals()
+            if count > 0:
+                await query.edit_message_text(f"Revoked all {count} auto-approval(s).")
+            else:
+                await query.edit_message_text("No auto-approvals to revoke.")
+        elif query.data.startswith("revoke_"):
+            index_str = query.data[7:]  # Remove "revoke_" prefix
+            try:
+                index = int(index_str)
+                removed = session.permission_handler.remove_sticky_approval(index)
+                if removed:
+                    await query.edit_message_text(f"Revoked: {removed.describe()}")
+                else:
+                    await query.edit_message_text("Invalid approval index.")
+            except ValueError:
+                await query.edit_message_text("Invalid revoke command.")
 
     async def _handle_status(self, chat_id: int, update: Update) -> None:
         """Handle status request."""
@@ -514,6 +582,7 @@ class VoiceAgentBot:
         # Add handlers
         app.add_handler(CommandHandler("start", self.start_command))
         app.add_handler(CommandHandler("status", self.status_command))
+        app.add_handler(CommandHandler("approvals", self.approvals_command))
         app.add_handler(CallbackQueryHandler(self.handle_callback))
         app.add_handler(MessageHandler(filters.VOICE, self.handle_voice))
         app.add_handler(
