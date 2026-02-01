@@ -3,6 +3,8 @@
 Handles voice messages and routes them to Claude sessions.
 """
 
+import asyncio
+import contextlib
 import logging
 from typing import Any
 
@@ -40,8 +42,6 @@ class VoiceAgentBot:
         Args:
             settings: Application settings.
         """
-        import asyncio
-
         self.settings = settings
         self.storage = SessionStorage(path=settings.session_storage_path)
         self.session_manager = SessionManager(
@@ -90,6 +90,8 @@ class VoiceAgentBot:
             "- 'new session' to start fresh\n"
             "- 'continue' to resume previous session\n"
             "- 'yes/approve' or 'no/reject' for permission prompts\n"
+            "- 'always approve' to sticky-approve similar tool calls\n"
+            "- 'clear sticky' to reset sticky approvals\n"
             "- 'escape/stop task/abort' to cancel running task"
         )
 
@@ -164,7 +166,9 @@ class VoiceAgentBot:
         try:
             file = await context.bot.get_file(voice.file_id)
             audio_bytes = await file.download_as_bytearray()
-            logger.info("Downloaded %d bytes of audio from chat %s", len(audio_bytes), chat_id)
+            logger.info(
+                "Downloaded %d bytes of audio from chat %s", len(audio_bytes), chat_id
+            )
         except Exception as e:
             logger.error("Failed to download voice: %s", e)
             await update.message.reply_text(f"Failed to download audio: {e}")
@@ -174,6 +178,7 @@ class VoiceAgentBot:
         try:
             text = await transcribe(bytes(audio_bytes), self.settings.whisper_url)
             from html import escape
+
             await update.message.reply_text(f"<i>{escape(text)}</i>", parse_mode="HTML")
         except TranscriptionError as e:
             logger.error("Transcription failed: %s", e)
@@ -199,6 +204,10 @@ class VoiceAgentBot:
             await self._handle_approve(chat_id, update)
         elif command.command_type == CommandType.REJECT:
             await self._handle_reject(chat_id, update)
+        elif command.command_type == CommandType.STICKY_APPROVE:
+            await self._handle_sticky_approve(chat_id, update)
+        elif command.command_type == CommandType.CLEAR_STICKY:
+            await self._handle_clear_sticky(chat_id, update)
         elif command.command_type == CommandType.STATUS:
             await self._handle_status(chat_id, update)
         elif command.command_type == CommandType.NEW_SESSION:
@@ -233,11 +242,40 @@ class VoiceAgentBot:
         desc = session.permission_handler.get_pending_description()
         if session.permission_handler.deny("User rejected via voice"):
             from html import escape
+
             await update.message.reply_text(  # type: ignore
                 f"❌ <b>Rejected:</b> {escape(desc or 'unknown')}", parse_mode="HTML"
             )
         else:
             await update.message.reply_text("No pending permission to reject.")  # type: ignore
+
+    async def _handle_sticky_approve(self, chat_id: int, update: Update) -> None:
+        """Handle sticky approval - approve and remember for similar calls."""
+        session = self.session_manager.get(chat_id)
+        if not session:
+            await update.message.reply_text("No active session.")  # type: ignore
+            return
+
+        sticky = session.permission_handler.sticky_approve()
+        if sticky:
+            await update.message.reply_text(  # type: ignore
+                f"Stickied: {sticky.describe()} auto-approved"
+            )
+        else:
+            await update.message.reply_text("No pending permission to sticky approve.")  # type: ignore
+
+    async def _handle_clear_sticky(self, chat_id: int, update: Update) -> None:
+        """Handle clearing all sticky approvals."""
+        session = self.session_manager.get(chat_id)
+        if not session:
+            await update.message.reply_text("No active session.")  # type: ignore
+            return
+
+        count = session.permission_handler.clear_sticky_approvals()
+        if count > 0:
+            await update.message.reply_text(f"Cleared {count} sticky approval(s).")  # type: ignore
+        else:
+            await update.message.reply_text("No sticky approvals to clear.")  # type: ignore
 
     async def handle_callback(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -263,13 +301,23 @@ class VoiceAgentBot:
                 await query.delete_message()
             else:
                 await query.edit_message_text("No pending permission.")
+        elif query.data == "sticky_approve":
+            sticky = session.permission_handler.sticky_approve()
+            if sticky:
+                await query.edit_message_text(
+                    f"Stickied: {sticky.describe()} auto-approved"
+                )
+            else:
+                await query.edit_message_text("No pending permission.")
         elif query.data == "reject":
             # Get description before denying (deny clears pending)
             desc = session.permission_handler.get_pending_description()
             if session.permission_handler.deny("User rejected via button"):
                 from html import escape
+
                 await query.edit_message_text(
-                    f"❌ <b>Rejected:</b> {escape(desc or 'unknown')}", parse_mode="HTML"
+                    f"❌ <b>Rejected:</b> {escape(desc or 'unknown')}",
+                    parse_mode="HTML",
                 )
             else:
                 await query.edit_message_text("No pending permission.")
@@ -333,9 +381,6 @@ class VoiceAgentBot:
 
     async def _handle_cancel(self, chat_id: int, update: Update) -> None:
         """Handle cancel/escape request to stop running task."""
-        import asyncio
-        import contextlib
-
         task = self._active_tasks.get(chat_id)
         if task and not task.done():
             self._cancel_flags[chat_id] = True
@@ -344,18 +389,12 @@ class VoiceAgentBot:
                 await task
             self._active_tasks.pop(chat_id, None)
             self._cancel_flags.pop(chat_id, None)
-            await update.message.reply_text(  # type: ignore
-                "⏹️ Task cancelled."
-            )
+            await update.message.reply_text("⏹️ Task cancelled.")  # type: ignore
         else:
-            await update.message.reply_text(  # type: ignore
-                "No running task to cancel."
-            )
+            await update.message.reply_text("No running task to cancel.")  # type: ignore
 
-    def _get_prompt_lock(self, chat_id: int) -> "asyncio.Lock":
+    def _get_prompt_lock(self, chat_id: int) -> asyncio.Lock:
         """Get or create a lock for serializing prompts per chat."""
-        import asyncio
-
         if chat_id not in self._prompt_locks:
             self._prompt_locks[chat_id] = asyncio.Lock()
         return self._prompt_locks[chat_id]
@@ -381,7 +420,6 @@ class VoiceAgentBot:
 
     async def _handle_prompt(self, chat_id: int, text: str, update: Update) -> None:
         """Handle a prompt to send to Claude."""
-        import asyncio
 
         # Set up notification callback for this chat
         async def notify_permission(tool_name: str, input_data: dict[str, Any]) -> None:
@@ -389,14 +427,19 @@ class VoiceAgentBot:
             if tool_name == "Bash":
                 desc = f"Claude wants to run: {input_data.get('command', 'unknown')}"
             elif tool_name in ("Write", "Edit"):
-                desc = f"Claude wants to modify: {input_data.get('file_path', 'unknown')}"
-            keyboard = InlineKeyboardMarkup([
+                desc = (
+                    f"Claude wants to modify: {input_data.get('file_path', 'unknown')}"
+                )
+            keyboard = InlineKeyboardMarkup(
                 [
-                    InlineKeyboardButton("Approve", callback_data="approve"),
-                    InlineKeyboardButton("Reject", callback_data="reject"),
+                    [
+                        InlineKeyboardButton("Approve", callback_data="approve"),
+                        InlineKeyboardButton("Always", callback_data="sticky_approve"),
+                        InlineKeyboardButton("Reject", callback_data="reject"),
+                    ]
                 ]
-            ])
-            await update.message.reply_text(desc,reply_markup=keyboard)  # type: ignore
+            )
+            await update.message.reply_text(desc, reply_markup=keyboard)  # type: ignore
 
         self.session_manager.set_notify_callback(chat_id, notify_permission)
 
@@ -406,15 +449,17 @@ class VoiceAgentBot:
         async def run_prompt() -> None:
             # Notify if we're waiting for another prompt to finish
             if lock.locked():
-                await update.message.reply_text("(Queued, waiting for previous request...)")  # type: ignore
+                await update.message.reply_text(
+                    "(Queued, waiting for previous request...)"
+                )  # type: ignore
             async with lock:
                 logger.info("Processing prompt for chat %s: %s", chat_id, text[:50])
                 self._cancel_flags[chat_id] = False
 
                 # Send "working" message with Stop button
-                stop_keyboard = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🛑 Stop", callback_data="cancel")]
-                ])
+                stop_keyboard = InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("🛑 Stop", callback_data="cancel")]]
+                )
                 working_msg = await update.message.reply_text(  # type: ignore
                     "⏳ Working...", reply_markup=stop_keyboard
                 )
@@ -430,7 +475,9 @@ class VoiceAgentBot:
 
                         # Send in batches to avoid too many messages
                         if len(response_buffer) >= 5:
-                            await self._send_formatted(update, "\n".join(response_buffer))
+                            await self._send_formatted(
+                                update, "\n".join(response_buffer)
+                            )
                             response_buffer = []
 
                     # Send remaining
@@ -445,10 +492,8 @@ class VoiceAgentBot:
                     self._active_tasks.pop(chat_id, None)
                     self._cancel_flags.pop(chat_id, None)
                     # Remove the "Working..." message with Stop button
-                    try:
+                    with contextlib.suppress(Exception):
                         await working_msg.delete()
-                    except Exception:
-                        pass  # Message may already be deleted
 
         task = asyncio.create_task(run_prompt())
         self._active_tasks[chat_id] = task
@@ -466,7 +511,9 @@ class VoiceAgentBot:
         app.add_handler(CommandHandler("status", self.status_command))
         app.add_handler(CallbackQueryHandler(self.handle_callback))
         app.add_handler(MessageHandler(filters.VOICE, self.handle_voice))
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text))
+        app.add_handler(
+            MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text)
+        )
 
         return app
 

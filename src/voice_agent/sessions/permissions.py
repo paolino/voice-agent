@@ -4,6 +4,7 @@ Manages the canUseTool callback flow for requesting user approval.
 """
 
 import asyncio
+import re
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any, Callable, Coroutine
@@ -16,6 +17,67 @@ class PermissionState(Enum):
     APPROVED = auto()
     DENIED = auto()
     TIMEOUT = auto()
+
+
+# Field names that identify the "target" of each tool
+TOOL_FIELD_NAMES: dict[str, str] = {
+    "Bash": "command",
+    "Write": "file_path",
+    "Edit": "file_path",
+    "NotebookEdit": "notebook_path",
+}
+
+
+@dataclass
+class StickyApproval:
+    """A sticky approval rule that auto-approves matching tool calls.
+
+    Attributes:
+        tool_name: Name of the tool to auto-approve.
+        pattern: Optional regex pattern to match against field value.
+        field_name: Field to match pattern against ('command', 'file_path', etc).
+    """
+
+    tool_name: str
+    pattern: str | None = None
+    field_name: str | None = None
+
+    def matches(self, tool_name: str, input_data: dict[str, Any]) -> bool:
+        """Check if this sticky approval matches a tool call.
+
+        Args:
+            tool_name: Name of the tool being called.
+            input_data: Input parameters for the tool.
+
+        Returns:
+            True if the tool call matches this sticky approval.
+        """
+        if tool_name != self.tool_name:
+            return False
+
+        # No pattern means match all calls to this tool
+        if self.pattern is None:
+            return True
+
+        # Get field value to match against
+        if not self.field_name:
+            return True
+
+        field_value = input_data.get(self.field_name, "")
+        if not field_value:
+            return False
+
+        return bool(re.search(self.pattern, field_value))
+
+    def describe(self) -> str:
+        """Get a human-readable description of this approval.
+
+        Returns:
+            Description string.
+        """
+        if self.pattern:
+            return f"{self.tool_name} matching '{self.pattern}'"
+        return f"all {self.tool_name}"
 
 
 @dataclass
@@ -102,14 +164,14 @@ class PermissionHandler:
         pending: Current pending permission, if any.
         timeout: Seconds to wait for user approval.
         notify_callback: Async callback to notify user of permission request.
+        sticky_approvals: List of sticky approval rules for auto-approving.
     """
 
     def __init__(
         self,
         timeout: int = 300,
-        notify_callback: Callable[
-            [str, dict[str, Any]], Coroutine[Any, Any, None]
-        ] | None = None,
+        notify_callback: Callable[[str, dict[str, Any]], Coroutine[Any, Any, None]]
+        | None = None,
     ) -> None:
         """Initialize the permission handler.
 
@@ -120,6 +182,7 @@ class PermissionHandler:
         self.pending: PendingPermission | None = None
         self.timeout = timeout
         self.notify_callback = notify_callback
+        self.sticky_approvals: list[StickyApproval] = []
 
     def has_pending(self) -> bool:
         """Check if there's a pending permission request.
@@ -127,7 +190,9 @@ class PermissionHandler:
         Returns:
             True if a permission is pending.
         """
-        return self.pending is not None and self.pending.state == PermissionState.PENDING
+        return (
+            self.pending is not None and self.pending.state == PermissionState.PENDING
+        )
 
     def get_pending_description(self) -> str | None:
         """Get a human-readable description of the pending permission.
@@ -150,12 +215,29 @@ class PermissionHandler:
 
         return f"Use tool: {tool}"
 
+    def _check_sticky_approval(
+        self, tool_name: str, input_data: dict[str, Any]
+    ) -> bool:
+        """Check if a tool call matches any sticky approval.
+
+        Args:
+            tool_name: Name of the tool.
+            input_data: Input parameters for the tool.
+
+        Returns:
+            True if the tool call matches a sticky approval.
+        """
+        return any(
+            approval.matches(tool_name, input_data)
+            for approval in self.sticky_approvals
+        )
+
     async def request_permission(
         self, tool_name: str, input_data: dict[str, Any]
     ) -> tuple[bool, str | None]:
         """Request permission for a tool call.
 
-        Auto-approves safe tools, queues others for user approval.
+        Auto-approves safe tools and sticky approvals, queues others for user.
 
         Args:
             tool_name: Name of the tool.
@@ -166,6 +248,10 @@ class PermissionHandler:
         """
         # Auto-approve safe tools
         if is_safe_tool_call(tool_name, input_data):
+            return True, None
+
+        # Check sticky approvals
+        if self._check_sticky_approval(tool_name, input_data):
             return True, None
 
         # Create pending permission
@@ -214,3 +300,50 @@ class PermissionHandler:
         self.pending.deny_message = message or "User rejected"
         self.pending.event.set()
         return True
+
+    def sticky_approve(self) -> StickyApproval | None:
+        """Approve pending permission and create sticky rule for similar calls.
+
+        Creates a sticky approval rule based on the current pending permission,
+        then approves it.
+
+        Returns:
+            The created StickyApproval or None if no pending permission.
+        """
+        if not self.pending or self.pending.state != PermissionState.PENDING:
+            return None
+
+        tool_name = self.pending.tool_name
+        field_name = TOOL_FIELD_NAMES.get(tool_name)
+
+        # Create sticky approval for all calls to this tool
+        sticky = StickyApproval(
+            tool_name=tool_name,
+            pattern=None,
+            field_name=field_name,
+        )
+        self.sticky_approvals.append(sticky)
+
+        # Approve the current request
+        self.pending.state = PermissionState.APPROVED
+        self.pending.event.set()
+
+        return sticky
+
+    def get_sticky_approvals(self) -> list[StickyApproval]:
+        """Get all active sticky approvals.
+
+        Returns:
+            List of sticky approval rules.
+        """
+        return list(self.sticky_approvals)
+
+    def clear_sticky_approvals(self) -> int:
+        """Clear all sticky approvals.
+
+        Returns:
+            Number of approvals cleared.
+        """
+        count = len(self.sticky_approvals)
+        self.sticky_approvals.clear()
+        return count

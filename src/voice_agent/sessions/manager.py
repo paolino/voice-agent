@@ -61,6 +61,12 @@ class Session:
             desc = self.permission_handler.get_pending_description()
             status_parts.append(f"Pending approval: {desc}")
 
+        sticky_approvals = self.permission_handler.get_sticky_approvals()
+        if sticky_approvals:
+            status_parts.append(f"Sticky approvals ({len(sticky_approvals)}):")
+            for approval in sticky_approvals:
+                status_parts.append(f"  - {approval.describe()}")
+
         return "\n".join(status_parts)
 
 
@@ -135,9 +141,7 @@ class SessionManager:
         )
         self.storage.save(stored)
 
-    def set_notify_callback(
-        self, chat_id: int, callback: Any
-    ) -> None:
+    def set_notify_callback(self, chat_id: int, callback: Any) -> None:
         """Set the notification callback for a chat.
 
         Args:
@@ -287,7 +291,10 @@ class SessionManager:
                 context: ToolPermissionContext,
             ) -> PermissionResultAllow | PermissionResultDeny:
                 """Handle tool permission requests via the session's permission handler."""
-                approved, deny_message = await session.permission_handler.request_permission(
+                (
+                    approved,
+                    deny_message,
+                ) = await session.permission_handler.request_permission(
                     tool_name, input_data
                 )
                 if approved:
@@ -302,7 +309,9 @@ class SessionManager:
             session.sdk_client = ClaudeSDKClient(options=options)
             await session.sdk_client.__aenter__()
             logger.info(
-                "Created new SDK client for chat %s (CLI: %s)", session.chat_id, cli_path
+                "Created new SDK client for chat %s (CLI: %s)",
+                session.chat_id,
+                cli_path,
             )
 
         return session.sdk_client
