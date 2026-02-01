@@ -38,6 +38,7 @@
           propagatedBuildInputs = [
             pythonPackages.httpx
             pythonPackages.pydantic
+            pythonPackages.mcp
           ];
 
           # Fix bundled CLI permissions
@@ -89,6 +90,21 @@
           };
         };
 
+        # Python environment with test dependencies
+        testEnv = python.withPackages (ps: [
+          voiceAgent
+          ps.pytest
+          ps.pytest-asyncio
+          ps.pytest-cov
+          ps.pytest-httpx
+          ps.pytest-mock
+        ]);
+
+        # Test runner as a script
+        testRunner = pkgs.writeShellScriptBin "voice-agent-tests" ''
+          exec ${testEnv}/bin/python -m pytest ${./tests/unit} -v "$@"
+        '';
+
         devShell = pkgs.mkShell {
           packages = [
             python
@@ -117,13 +133,20 @@
           default = voiceAgent;
           voice-agent = voiceAgent;
           docker-image = dockerImage;
+          tests = testRunner;
         };
 
         devShells.default = devShell;
 
-        apps.default = {
-          type = "app";
-          program = "${voiceAgent}/bin/voice-agent";
+        apps = {
+          default = {
+            type = "app";
+            program = "${voiceAgent}/bin/voice-agent";
+          };
+          tests = {
+            type = "app";
+            program = "${testRunner}/bin/voice-agent-tests";
+          };
         };
       }
     );
