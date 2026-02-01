@@ -148,14 +148,24 @@ class TestVoiceAgentBot:
     async def test_handle_transcription_unknown_project(
         self, bot: VoiceAgentBot
     ) -> None:
-        """Test handling unknown project."""
+        """Test handling unknown project falls through to prompt."""
+        import asyncio
+        from unittest.mock import patch
+
         update = MagicMock()
         update.effective_chat.id = 123
         update.message.reply_text = AsyncMock()
 
-        await bot._handle_transcription(123, "work on unknown", update)
+        # Mock send_prompt to return immediately
+        async def mock_send_prompt(*args, **kwargs):
+            yield "test response"
 
-        # Should fall through to prompt handling
+        with patch.object(bot.session_manager, "send_prompt", mock_send_prompt):
+            await bot._handle_transcription(123, "work on unknown", update)
+            # Give background task time to complete
+            await asyncio.sleep(0.05)
+
+        # Should have sent response from prompt
         update.message.reply_text.assert_called()
 
     async def test_handle_text_allowed(self, bot: VoiceAgentBot) -> None:

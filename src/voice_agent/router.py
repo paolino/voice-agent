@@ -58,7 +58,8 @@ def parse_command(text: str, projects: dict[str, str] | None = None) -> ParsedCo
     Returns:
         ParsedCommand with detected intent.
     """
-    lower_text = text.lower().strip()
+    # Strip punctuation and whitespace for matching
+    lower_text = text.lower().strip().rstrip(".,!?")
 
     # Check for exact or near-exact matches first
     if lower_text in APPROVE_KEYWORDS:

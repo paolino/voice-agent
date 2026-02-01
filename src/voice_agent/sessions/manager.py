@@ -145,6 +145,9 @@ class SessionManager:
             callback: Async function to call for notifications.
         """
         self._notify_callbacks[chat_id] = callback
+        # Also update existing session's permission handler
+        if chat_id in self.sessions:
+            self.sessions[chat_id].permission_handler.notify_callback = callback
 
     def get_or_create(self, chat_id: int, cwd: str | None = None) -> Session:
         """Get existing session or create new one.
