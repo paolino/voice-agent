@@ -157,3 +157,55 @@ class TestVoiceAgentBot:
 
         # Should fall through to prompt handling
         update.message.reply_text.assert_called()
+
+    async def test_handle_text_allowed(self, bot: VoiceAgentBot) -> None:
+        """Test text message handling for allowed chat."""
+        update = MagicMock()
+        update.effective_chat.id = 123
+        update.message.text = "status"
+        update.message.reply_text = AsyncMock()
+
+        await bot.handle_text(update, MagicMock())
+
+        # Status should be returned
+        update.message.reply_text.assert_called_once()
+        call_args = update.message.reply_text.call_args[0][0]
+        assert "Working directory" in call_args or "No active session" in call_args
+
+    async def test_handle_text_not_allowed(self, bot: VoiceAgentBot) -> None:
+        """Test text message handling for non-allowed chat."""
+        update = MagicMock()
+        update.effective_chat.id = 999
+        update.message.text = "hello"
+        update.message.reply_text = AsyncMock()
+
+        await bot.handle_text(update, MagicMock())
+
+        update.message.reply_text.assert_not_called()
+
+    async def test_handle_text_approve(self, bot: VoiceAgentBot) -> None:
+        """Test text approval handling."""
+        from voice_agent.sessions.permissions import PendingPermission
+
+        session = bot.session_manager.get_or_create(123)
+        session.permission_handler.pending = PendingPermission(
+            tool_name="Write", input_data={}
+        )
+
+        update = MagicMock()
+        update.effective_chat.id = 123
+        update.message.text = "yes"
+        update.message.reply_text = AsyncMock()
+
+        await bot.handle_text(update, MagicMock())
+
+        update.message.reply_text.assert_called_once_with("Approved.")
+
+    async def test_handle_text_no_message(self, bot: VoiceAgentBot) -> None:
+        """Test text handler with missing message."""
+        update = MagicMock()
+        update.effective_chat = None
+        update.message = None
+
+        # Should return early without error
+        await bot.handle_text(update, MagicMock())
