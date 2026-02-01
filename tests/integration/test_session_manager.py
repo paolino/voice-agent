@@ -1,5 +1,8 @@
 """Integration tests for session manager."""
 
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 from voice_agent.sessions import SessionManager
@@ -99,3 +102,158 @@ class TestSessionManager:
         status = session.get_status()
         assert "Pending approval" in status
         assert "Write file" in status
+
+
+@pytest.mark.integration
+class TestPermissionCallbackWiring:
+    """Tests for permission callback wiring to SDK."""
+
+    async def test_safe_tool_auto_approved_via_callback(
+        self, session_manager: SessionManager
+    ) -> None:
+        """Test safe tools are auto-approved through SDK callback."""
+        session = session_manager.get_or_create(123)
+
+        # Mock the SDK imports and client
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        captured_callback = None
+
+        def mock_options_init(**kwargs):
+            nonlocal captured_callback
+            captured_callback = kwargs.get("can_use_tool")
+            return MagicMock()
+
+        with patch("shutil.which", return_value="/usr/bin/claude"):
+            with patch(
+                "claude_agent_sdk.ClaudeAgentOptions",
+                side_effect=mock_options_init,
+            ):
+                with patch(
+                    "claude_agent_sdk.ClaudeSDKClient",
+                    return_value=mock_client,
+                ):
+                    with patch("claude_agent_sdk.PermissionResultAllow") as mock_allow:
+                        with patch("claude_agent_sdk.PermissionResultDeny"):
+                            with patch("claude_agent_sdk.ToolPermissionContext"):
+                                await session_manager._get_or_create_client(session)
+
+                                # Verify callback was captured
+                                assert captured_callback is not None
+
+                                # Call the callback with a safe tool
+                                mock_context = MagicMock()
+                                result = await captured_callback("Read", {}, mock_context)
+
+                                # Safe tool should return PermissionResultAllow
+                                mock_allow.assert_called_once()
+
+    async def test_unsafe_tool_waits_for_approval(
+        self, session_manager: SessionManager
+    ) -> None:
+        """Test unsafe tools wait for user approval through SDK callback."""
+        session = session_manager.get_or_create(123)
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        captured_callback = None
+
+        def mock_options_init(**kwargs):
+            nonlocal captured_callback
+            captured_callback = kwargs.get("can_use_tool")
+            return MagicMock()
+
+        with patch("shutil.which", return_value="/usr/bin/claude"):
+            with patch(
+                "claude_agent_sdk.ClaudeAgentOptions",
+                side_effect=mock_options_init,
+            ):
+                with patch(
+                    "claude_agent_sdk.ClaudeSDKClient",
+                    return_value=mock_client,
+                ):
+                    with patch("claude_agent_sdk.PermissionResultAllow") as mock_allow:
+                        with patch("claude_agent_sdk.PermissionResultDeny"):
+                            with patch("claude_agent_sdk.ToolPermissionContext"):
+                                await session_manager._get_or_create_client(session)
+
+                                assert captured_callback is not None
+
+                                # Start permission request in background
+                                mock_context = MagicMock()
+                                callback_task = asyncio.create_task(
+                                    captured_callback(
+                                        "Write", {"file_path": "/tmp/test.txt"}, mock_context
+                                    )
+                                )
+
+                                # Wait for pending permission to be created
+                                await asyncio.sleep(0.01)
+                                assert session.permission_handler.has_pending()
+
+                                # Approve the permission
+                                session.permission_handler.approve()
+
+                                # Wait for callback to complete
+                                await callback_task
+
+                                # Should have called PermissionResultAllow
+                                mock_allow.assert_called_once()
+
+    async def test_unsafe_tool_denied(
+        self, session_manager: SessionManager
+    ) -> None:
+        """Test unsafe tools can be denied through SDK callback."""
+        session = session_manager.get_or_create(123)
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        captured_callback = None
+
+        def mock_options_init(**kwargs):
+            nonlocal captured_callback
+            captured_callback = kwargs.get("can_use_tool")
+            return MagicMock()
+
+        with patch("shutil.which", return_value="/usr/bin/claude"):
+            with patch(
+                "claude_agent_sdk.ClaudeAgentOptions",
+                side_effect=mock_options_init,
+            ):
+                with patch(
+                    "claude_agent_sdk.ClaudeSDKClient",
+                    return_value=mock_client,
+                ):
+                    with patch("claude_agent_sdk.PermissionResultAllow"):
+                        with patch("claude_agent_sdk.PermissionResultDeny") as mock_deny:
+                            with patch("claude_agent_sdk.ToolPermissionContext"):
+                                await session_manager._get_or_create_client(session)
+
+                                assert captured_callback is not None
+
+                                # Start permission request in background
+                                mock_context = MagicMock()
+                                callback_task = asyncio.create_task(
+                                    captured_callback(
+                                        "Write", {"file_path": "/tmp/test.txt"}, mock_context
+                                    )
+                                )
+
+                                # Wait for pending permission
+                                await asyncio.sleep(0.01)
+                                assert session.permission_handler.has_pending()
+
+                                # Deny the permission
+                                session.permission_handler.deny("User rejected")
+
+                                # Wait for callback to complete
+                                await callback_task
+
+                                # Should have called PermissionResultDeny with message
+                                mock_deny.assert_called_once_with(message="User rejected")

@@ -266,15 +266,34 @@ class SessionManager:
         if session.sdk_client is None:
             import shutil
 
-            from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+            from claude_agent_sdk import (
+                ClaudeAgentOptions,
+                ClaudeSDKClient,
+                PermissionResultAllow,
+                PermissionResultDeny,
+                ToolPermissionContext,
+            )
 
             # Use system Claude CLI (2.0+) instead of bundled SDK version (1.3.5)
             # The SDK's bundled CLI is too old and lacks required features
             cli_path = shutil.which("claude")
 
+            async def permission_callback(
+                tool_name: str,
+                input_data: dict[str, Any],
+                context: ToolPermissionContext,
+            ) -> PermissionResultAllow | PermissionResultDeny:
+                """Handle tool permission requests via the session's permission handler."""
+                approved, deny_message = await session.permission_handler.request_permission(
+                    tool_name, input_data
+                )
+                if approved:
+                    return PermissionResultAllow()
+                return PermissionResultDeny(message=deny_message or "Permission denied")
+
             options = ClaudeAgentOptions(
                 cwd=session.cwd,
-                permission_mode="acceptEdits",  # Auto-accept for now
+                can_use_tool=permission_callback,
                 cli_path=cli_path,
             )
             session.sdk_client = ClaudeSDKClient(options=options)
