@@ -12,9 +12,7 @@ from voice_agent.sessions import SessionManager
 class TestSessionManager:
     """Integration tests for SessionManager."""
 
-    def test_get_or_create_new_session(
-        self, session_manager: SessionManager
-    ) -> None:
+    def test_get_or_create_new_session(self, session_manager: SessionManager) -> None:
         """Test creating a new session."""
         session = session_manager.get_or_create(123)
 
@@ -60,9 +58,7 @@ class TestSessionManager:
 
         assert session.cwd == "/other/path"
 
-    def test_get_status_with_session(
-        self, session_manager: SessionManager
-    ) -> None:
+    def test_get_status_with_session(self, session_manager: SessionManager) -> None:
         """Test getting status with active session."""
         session_manager.get_or_create(123)
         status = session_manager.get_status(123)
@@ -71,9 +67,7 @@ class TestSessionManager:
         assert "Working directory: /code" in status
         assert "Messages: 0" in status
 
-    def test_get_status_no_session(
-        self, session_manager: SessionManager
-    ) -> None:
+    def test_get_status_no_session(self, session_manager: SessionManager) -> None:
         """Test getting status without session."""
         status = session_manager.get_status(999)
         assert status is None
@@ -145,7 +139,9 @@ class TestPermissionCallbackWiring:
 
                                 # Call the callback with a safe tool
                                 mock_context = MagicMock()
-                                result = await captured_callback("Read", {}, mock_context)
+                                result = await captured_callback(
+                                    "Read", {}, mock_context
+                                )
 
                                 # Safe tool should return PermissionResultAllow
                                 mock_allow.assert_called_once()
@@ -187,7 +183,9 @@ class TestPermissionCallbackWiring:
                                 mock_context = MagicMock()
                                 callback_task = asyncio.create_task(
                                     captured_callback(
-                                        "Write", {"file_path": "/tmp/test.txt"}, mock_context
+                                        "Write",
+                                        {"file_path": "/tmp/test.txt"},
+                                        mock_context,
                                     )
                                 )
 
@@ -204,9 +202,7 @@ class TestPermissionCallbackWiring:
                                 # Should have called PermissionResultAllow
                                 mock_allow.assert_called_once()
 
-    async def test_unsafe_tool_denied(
-        self, session_manager: SessionManager
-    ) -> None:
+    async def test_unsafe_tool_denied(self, session_manager: SessionManager) -> None:
         """Test unsafe tools can be denied through SDK callback."""
         session = session_manager.get_or_create(123)
 
@@ -231,7 +227,9 @@ class TestPermissionCallbackWiring:
                     return_value=mock_client,
                 ):
                     with patch("claude_agent_sdk.PermissionResultAllow"):
-                        with patch("claude_agent_sdk.PermissionResultDeny") as mock_deny:
+                        with patch(
+                            "claude_agent_sdk.PermissionResultDeny"
+                        ) as mock_deny:
                             with patch("claude_agent_sdk.ToolPermissionContext"):
                                 await session_manager._get_or_create_client(session)
 
@@ -241,7 +239,9 @@ class TestPermissionCallbackWiring:
                                 mock_context = MagicMock()
                                 callback_task = asyncio.create_task(
                                     captured_callback(
-                                        "Write", {"file_path": "/tmp/test.txt"}, mock_context
+                                        "Write",
+                                        {"file_path": "/tmp/test.txt"},
+                                        mock_context,
                                     )
                                 )
 
@@ -256,4 +256,6 @@ class TestPermissionCallbackWiring:
                                 await callback_task
 
                                 # Should have called PermissionResultDeny with message
-                                mock_deny.assert_called_once_with(message="User rejected")
+                                mock_deny.assert_called_once_with(
+                                    message="User rejected"
+                                )

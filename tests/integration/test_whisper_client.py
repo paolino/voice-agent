@@ -31,9 +31,7 @@ class TestWhisperClient:
         assert request is not None
         assert "multipart/form-data" in request.headers["content-type"]
 
-    async def test_transcribe_handles_unicode(
-        self, httpx_mock: HTTPXMock
-    ) -> None:
+    async def test_transcribe_handles_unicode(self, httpx_mock: HTTPXMock) -> None:
         """Test transcription with unicode characters."""
         httpx_mock.add_response(
             url="http://localhost:8080/transcribe",
@@ -47,9 +45,7 @@ class TestWhisperClient:
 
         assert "\u4e16\u754c" in result
 
-    async def test_transcribe_custom_timeout(
-        self, httpx_mock: HTTPXMock
-    ) -> None:
+    async def test_transcribe_custom_timeout(self, httpx_mock: HTTPXMock) -> None:
         """Test transcription with custom timeout."""
         httpx_mock.add_response(
             url="http://custom:9000/transcribe",
@@ -64,9 +60,7 @@ class TestWhisperClient:
 
         assert result == "result"
 
-    async def test_transcribe_server_error_details(
-        self, httpx_mock: HTTPXMock
-    ) -> None:
+    async def test_transcribe_server_error_details(self, httpx_mock: HTTPXMock) -> None:
         """Test error handling preserves status code."""
         httpx_mock.add_response(
             url="http://localhost:8080/transcribe",
@@ -81,9 +75,7 @@ class TestWhisperClient:
 
         assert "503" in str(exc_info.value)
 
-    async def test_transcribe_malformed_response(
-        self, httpx_mock: HTTPXMock
-    ) -> None:
+    async def test_transcribe_malformed_response(self, httpx_mock: HTTPXMock) -> None:
         """Test handling of malformed JSON response."""
         httpx_mock.add_response(
             url="http://localhost:8080/transcribe",
