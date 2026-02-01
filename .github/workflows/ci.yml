@@ -21,10 +21,13 @@ jobs:
           cachix-auth-token: "${{ secrets.CACHIX_AUTH_TOKEN }}"
 
       - name: Build
-        run: nix build .#voice-agent --quiet
+        run: nix build .#voice-agent
 
       - name: Build Docker image
         run: nix build .#docker-image --quiet
 
       - name: Run tests
         run: nix run .#tests --quiet
+
+      - name: Build docs
+        run: nix build .#docs --quiet

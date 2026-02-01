@@ -34,21 +34,13 @@ voice-agent is a Telegram bot that lets you control Claude Code sessions using v
 
 ## Architecture
 
-```
-Phone (Telegram)
-    │
-    │ voice message
-    ↓
-Telegram servers
-    │
-    │ polling
-    ↓
-voice-agent (Python)
-    ├── download .oga audio
-    ├── POST to whisper-server/transcribe
-    ├── Command Router
-    │   └── Claude CLI (--print mode)
-    └── Reply in Telegram chat
+```mermaid
+flowchart LR
+    Phone[Phone] -->|voice message| TG[Telegram]
+    TG -->|polling| VA[voice-agent]
+    VA -->|audio| Whisper[whisper-server]
+    VA -->|prompt| Claude[Claude CLI]
+    VA -->|reply| TG
 ```
 
 ## Requirements

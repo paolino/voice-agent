@@ -6,25 +6,13 @@ voice-agent maintains one Claude session per Telegram chat. Sessions track worki
 
 ## Session States
 
-```
-┌─────────────┐
-│   No        │
-│  Session    │
-└─────────────┘
-      │
-      │ First message or "continue"
-      ▼
-┌─────────────┐
-│   Active    │◄────────────┐
-│  Session    │             │
-└─────────────┘             │
-      │                     │
-      │ "new session"       │ prompt/command
-      ▼                     │
-┌─────────────┐             │
-│  Session    │─────────────┘
-│  Reset      │
-└─────────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> NoSession
+    NoSession --> Active: First message or "continue"
+    Active --> Active: prompt/command
+    Active --> Reset: "new session"
+    Reset --> Active: automatic
 ```
 
 Persisted sessions survive bot restarts. Say "continue" to resume previous context.

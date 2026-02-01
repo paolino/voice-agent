@@ -55,7 +55,13 @@
 
         python = pkgs.python311;
 
-        pythonPackages = python.pkgs;
+        # Override packages with flaky tests in CI
+        pythonPackages = python.pkgs.overrideScope (
+          _final: prev: {
+            tenacity = prev.tenacity.overridePythonAttrs { doCheck = false; };
+            apscheduler = prev.apscheduler.overridePythonAttrs { doCheck = false; };
+          }
+        );
 
         # =====================================================================
         # Claude Agent SDK

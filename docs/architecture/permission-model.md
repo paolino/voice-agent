@@ -37,37 +37,24 @@ These operations require explicit user approval:
 
 ## Approval Flow
 
-```
-Claude requests Write tool
-         │
-         ▼
-┌─────────────────────┐
-│ is_safe_tool_call?  │
-└─────────────────────┘
-    │           │
-   Yes          No
-    │           │
-    ▼           ▼
-Auto-approve   Queue for approval
-                    │
-                    ▼
-          ┌─────────────────┐
-          │ Notify user via │
-          │    Telegram     │
-          └─────────────────┘
-                    │
-                    ▼
-          ┌─────────────────┐
-          │ Wait for voice  │
-          │    response     │
-          └─────────────────┘
-                    │
-        ┌───────────┴───────────┐
-        │                       │
-   "approve"               "reject"
-        │                       │
-        ▼                       ▼
-   Allow tool              Deny tool
+```mermaid
+flowchart TD
+    Request[Claude requests tool]
+    Check{is_safe_tool_call?}
+    Auto[Auto-approve]
+    Queue[Queue for approval]
+    Notify[Notify user via Telegram]
+    Wait[Wait for voice response]
+    Allow[Allow tool]
+    Deny[Deny tool]
+
+    Request --> Check
+    Check -->|Yes| Auto
+    Check -->|No| Queue
+    Queue --> Notify
+    Notify --> Wait
+    Wait -->|"approve"| Allow
+    Wait -->|"reject"| Deny
 ```
 
 ## Voice Commands for Permissions
