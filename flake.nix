@@ -17,13 +17,19 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
 
+        version = "0.1.0";
+
         python = pkgs.python311;
 
         pythonPackages = python.pkgs;
 
+        dockerImage = import ./nix/docker-image.nix {
+          inherit pkgs version;
+        };
+
         voiceAgent = pythonPackages.buildPythonApplication {
           pname = "voice-agent";
-          version = "0.1.0";
+          inherit version;
           pyproject = true;
 
           src = ./.;
@@ -83,6 +89,7 @@
         packages = {
           default = voiceAgent;
           voice-agent = voiceAgent;
+          docker-image = dockerImage;
         };
 
         devShells.default = devShell;
