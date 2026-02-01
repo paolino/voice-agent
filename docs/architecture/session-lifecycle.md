@@ -12,7 +12,7 @@ voice-agent maintains one Claude session per Telegram chat. Sessions track worki
 │  Session    │
 └─────────────┘
       │
-      │ First message
+      │ First message or "continue"
       ▼
 ┌─────────────┐
 │   Active    │◄────────────┐
@@ -27,6 +27,8 @@ voice-agent maintains one Claude session per Telegram chat. Sessions track worki
 └─────────────┘
 ```
 
+Persisted sessions survive bot restarts. Say "continue" to resume previous context.
+
 ## Session Data
 
 Each session stores:
@@ -40,7 +42,24 @@ class Session:
     message_count: int        # Messages exchanged
     permission_handler: PermissionHandler
     process: subprocess.Popen | None
+    claude_session_id: str | None  # For resuming Claude context
 ```
+
+## Persistence
+
+Sessions are persisted to JSON via `SessionStorage`:
+
+```python
+@dataclass
+class StoredSession:
+    chat_id: int
+    cwd: str
+    created_at: str  # ISO format
+    message_count: int
+    claude_session_id: str | None
+```
+
+On startup, the bot restores all persisted sessions.
 
 ## Creating Sessions
 
@@ -97,10 +116,26 @@ Age: 1h 23m
 Pending approval: Write file: /tmp/test.txt
 ```
 
+## Persistence and Resume
+
+Sessions are now persisted to `sessions.json` (configurable via `SESSION_STORAGE_PATH`):
+
+- Sessions survive bot restarts
+- `claude_session_id` enables resuming Claude context
+- Say "continue" to resume with full conversation history
+
+```python
+# Resume uses --resume flag
+cmd = ["claude", "--print", "--dangerously-skip-permissions"]
+if session.claude_session_id:
+    cmd.extend(["--resume", session.claude_session_id])
+cmd.append(prompt)
+```
+
 ## Memory Management
 
-Sessions are kept in memory. For long-running deployments, consider:
+For long-running deployments, consider:
 
-- Periodic cleanup of old sessions
-- Persisting session IDs to disk for resume
+- Periodic cleanup of old sessions from storage
 - Maximum session age limits
+- Session count limits per user

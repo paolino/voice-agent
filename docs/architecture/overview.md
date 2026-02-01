@@ -67,6 +67,16 @@ Manages Claude sessions per chat:
 - Creates and maintains sessions
 - Tracks working directory and message count
 - Handles session lifecycle
+- Persists sessions via storage for restart survival
+- Supports session resume via Claude's `--resume` flag
+
+### Session Storage (`sessions/storage.py`)
+
+JSON-based session persistence:
+
+- Saves session state (chat_id, cwd, message_count, claude_session_id)
+- Restores sessions on bot startup
+- Handles corrupted files gracefully
 
 ### Permission Handler (`sessions/permissions.py`)
 
