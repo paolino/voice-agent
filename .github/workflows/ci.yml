@@ -23,5 +23,8 @@ jobs:
       - name: Build
         run: nix build .#voice-agent --quiet
 
+      - name: Build Docker image
+        run: nix build .#docker-image --quiet
+
       - name: Run tests
         run: nix run .#tests --quiet
