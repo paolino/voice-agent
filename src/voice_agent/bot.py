@@ -208,15 +208,13 @@ class VoiceAgentBot:
             await self._handle_prompt(chat_id, command.text, update)
 
     async def _handle_approve(self, chat_id: int, update: Update) -> None:
-        """Handle permission approval."""
+        """Handle permission approval (silent - no feedback needed)."""
         session = self.session_manager.get(chat_id)
         if not session:
             await update.message.reply_text("No active session.")  # type: ignore
             return
 
-        if session.permission_handler.approve():
-            await update.message.reply_text("Approved.")  # type: ignore
-        else:
+        if not session.permission_handler.approve():
             await update.message.reply_text("No pending permission to approve.")  # type: ignore
 
     async def _handle_reject(self, chat_id: int, update: Update) -> None:
@@ -226,8 +224,13 @@ class VoiceAgentBot:
             await update.message.reply_text("No active session.")  # type: ignore
             return
 
+        # Get description before denying
+        desc = session.permission_handler.get_pending_description()
         if session.permission_handler.deny("User rejected via voice"):
-            await update.message.reply_text("Rejected.")  # type: ignore
+            from html import escape
+            await update.message.reply_text(  # type: ignore
+                f"❌ <b>Rejected:</b> {escape(desc or 'unknown')}", parse_mode="HTML"
+            )
         else:
             await update.message.reply_text("No pending permission to reject.")  # type: ignore
 
@@ -252,12 +255,17 @@ class VoiceAgentBot:
 
         if query.data == "approve":
             if session.permission_handler.approve():
-                await query.edit_message_text("Approved.")
+                await query.delete_message()
             else:
                 await query.edit_message_text("No pending permission.")
         elif query.data == "reject":
+            # Get description before denying (deny clears pending)
+            desc = session.permission_handler.get_pending_description()
             if session.permission_handler.deny("User rejected via button"):
-                await query.edit_message_text("Rejected.")
+                from html import escape
+                await query.edit_message_text(
+                    f"❌ <b>Rejected:</b> {escape(desc or 'unknown')}", parse_mode="HTML"
+                )
             else:
                 await query.edit_message_text("No pending permission.")
 
