@@ -264,15 +264,24 @@ class SessionManager:
             ClaudeSDKClient instance.
         """
         if session.sdk_client is None:
+            import shutil
+
             from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+
+            # Use system Claude CLI (2.0+) instead of bundled SDK version (1.3.5)
+            # The SDK's bundled CLI is too old and lacks required features
+            cli_path = shutil.which("claude")
 
             options = ClaudeAgentOptions(
                 cwd=session.cwd,
                 permission_mode="acceptEdits",  # Auto-accept for now
+                cli_path=cli_path,
             )
             session.sdk_client = ClaudeSDKClient(options=options)
             await session.sdk_client.__aenter__()
-            logger.info("Created new SDK client for chat %s", session.chat_id)
+            logger.info(
+                "Created new SDK client for chat %s (CLI: %s)", session.chat_id, cli_path
+            )
 
         return session.sdk_client
 
