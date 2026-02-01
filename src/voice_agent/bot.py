@@ -19,6 +19,7 @@ from telegram.ext import (
 from voice_agent.config import Settings
 from voice_agent.router import CommandType, parse_command
 from voice_agent.sessions import SessionManager, SessionStorage
+from voice_agent.telegram_format import convert_markdown_to_telegram
 from voice_agent.transcribe import TranscriptionError, transcribe
 
 logger = logging.getLogger(__name__)
@@ -317,6 +318,25 @@ class VoiceAgentBot:
             self._prompt_locks[chat_id] = asyncio.Lock()
         return self._prompt_locks[chat_id]
 
+    async def _send_formatted(self, update: Update, text: str) -> None:
+        """Send a message with Telegram MarkdownV2 formatting.
+
+        Falls back to plain text if formatting fails.
+
+        Args:
+            update: Telegram update for replying.
+            text: Text to send (may contain Markdown).
+        """
+        try:
+            formatted = convert_markdown_to_telegram(text)
+            await update.message.reply_text(  # type: ignore
+                formatted, parse_mode="MarkdownV2"
+            )
+        except Exception as e:
+            # Fall back to plain text if formatting fails
+            logger.debug("Markdown formatting failed, falling back to plain: %s", e)
+            await update.message.reply_text(text)  # type: ignore
+
     async def _handle_prompt(self, chat_id: int, text: str, update: Update) -> None:
         """Handle a prompt to send to Claude."""
         import asyncio
@@ -347,19 +367,19 @@ class VoiceAgentBot:
                 await update.message.reply_text("(Queued, waiting for previous request...)")  # type: ignore
             async with lock:
                 logger.info("Processing prompt for chat %s: %s", chat_id, text[:50])
-                response_buffer = []
+                response_buffer: list[str] = []
                 try:
                     async for chunk in self.session_manager.send_prompt(chat_id, text):
                         response_buffer.append(chunk)
 
                         # Send in batches to avoid too many messages
                         if len(response_buffer) >= 5:
-                            await update.message.reply_text("\n".join(response_buffer))  # type: ignore
+                            await self._send_formatted(update, "\n".join(response_buffer))
                             response_buffer = []
 
                     # Send remaining
                     if response_buffer:
-                        await update.message.reply_text("\n".join(response_buffer))  # type: ignore
+                        await self._send_formatted(update, "\n".join(response_buffer))
                 except Exception as e:
                     logger.exception("Error in background prompt for chat %s", chat_id)
                     await update.message.reply_text(f"Error: {e}")  # type: ignore
