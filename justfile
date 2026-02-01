@@ -49,6 +49,24 @@ docs-build:
 docs-deploy:
     mkdocs gh-deploy
 
+# Build Docker image with nix
+docker-build:
+    nix build .#docker-image
+
+# Load Docker image into docker daemon
+docker-load:
+    docker load < result
+
+# Run Docker container (requires .env file with TELEGRAM_BOT_TOKEN)
+docker-run:
+    docker run --rm -it \
+        --env-file .env \
+        -e WHISPER_URL=${WHISPER_URL:-http://host.docker.internal:8080/transcribe} \
+        ghcr.io/paolino/voice-agent:0.1.0
+
+# Build and run Docker container
+docker: docker-build docker-load docker-run
+
 # Clean build artifacts
 clean:
     rm -rf build/ dist/ *.egg-info .pytest_cache .mypy_cache .ruff_cache htmlcov/ site/
