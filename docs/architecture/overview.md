@@ -2,35 +2,29 @@
 
 ## System Diagram
 
-```
-Phone (Telegram)
-    │
-    │ voice message (.oga)
-    ↓
-Telegram servers
-    │
-    │ Long polling
-    ↓
-┌─────────────────────────────────────────────────────┐
-│                   voice-agent                        │
-│                                                      │
-│  ┌──────────┐    ┌──────────────┐    ┌───────────┐ │
-│  │   Bot    │───>│   Router     │───>│  Session  │ │
-│  │ Handler  │    │              │    │  Manager  │ │
-│  └──────────┘    └──────────────┘    └───────────┘ │
-│       │                                     │       │
-│       │         ┌──────────────┐           │       │
-│       └────────>│  Transcribe  │           │       │
-│                 │   Client     │           │       │
-│                 └──────────────┘           │       │
-│                       │                    │       │
-└───────────────────────│────────────────────│───────┘
-                        │                    │
-                        ▼                    ▼
-                 ┌──────────────┐    ┌──────────────┐
-                 │   Whisper    │    │  Claude CLI  │
-                 │   Server     │    │              │
-                 └──────────────┘    └──────────────┘
+```mermaid
+flowchart TB
+    subgraph External
+        Phone[Phone - Telegram]
+        TG[Telegram Servers]
+        Whisper[Whisper Server]
+        Claude[Claude CLI]
+    end
+
+    subgraph voice-agent
+        Bot[Bot Handler]
+        Router[Router]
+        Session[Session Manager]
+        Transcribe[Transcribe Client]
+    end
+
+    Phone -->|voice message .oga| TG
+    TG -->|long polling| Bot
+    Bot --> Transcribe
+    Bot --> Router
+    Router --> Session
+    Transcribe --> Whisper
+    Session --> Claude
 ```
 
 ## Components
