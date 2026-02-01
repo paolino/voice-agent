@@ -1,3 +1,10 @@
+# Voice Agent Nix Flake
+#
+# Key decisions documented below. Run with:
+#   nix run .#voice-agent    - Run the bot
+#   nix run .#tests          - Run unit tests
+#   nix build .#docker-image - Build Docker image
+#   nix develop              - Enter dev shell
 {
   description = "Voice control for Claude Code via Telegram";
 
@@ -23,8 +30,23 @@
 
         pythonPackages = python.pkgs;
 
-        # Build claude-agent-sdk from PyPI (not in nixpkgs)
-        # The SDK bundles the Claude CLI binary
+        # =====================================================================
+        # Claude Agent SDK
+        # =====================================================================
+        # Why wheel format:
+        #   - claude-agent-sdk is not in nixpkgs
+        #   - The SDK bundles a pre-compiled Claude CLI binary that must be
+        #     preserved (building from source would lose it)
+        #
+        # Why propagatedBuildInputs includes mcp:
+        #   - The SDK's wheel metadata doesn't declare mcp as a dependency,
+        #     but it imports mcp.types at runtime. Without this, you get:
+        #     "ModuleNotFoundError: No module named 'mcp'"
+        #
+        # Why postInstall chmod:
+        #   - The bundled CLI binary loses execute permissions when unpacked
+        #     from the wheel. Without this fix, SDK fails to spawn Claude.
+        # =====================================================================
         claudeAgentSdk = pythonPackages.buildPythonPackage {
           pname = "claude-agent-sdk";
           version = "0.1.27";
@@ -38,10 +60,9 @@
           propagatedBuildInputs = [
             pythonPackages.httpx
             pythonPackages.pydantic
-            pythonPackages.mcp
+            pythonPackages.mcp # Required but not declared in wheel metadata
           ];
 
-          # Fix bundled CLI permissions
           postInstall = ''
             chmod +x $out/lib/python*/site-packages/claude_agent_sdk/_bundled/claude
           '';
@@ -49,10 +70,14 @@
           doCheck = false;
         };
 
+        # Docker image built with dockerTools (see nix/docker-image.nix)
         dockerImage = import ./nix/docker-image.nix {
           inherit pkgs version claudeAgentSdk;
         };
 
+        # =====================================================================
+        # Voice Agent Application
+        # =====================================================================
         voiceAgent = pythonPackages.buildPythonApplication {
           pname = "voice-agent";
           inherit version;
@@ -90,7 +115,24 @@
           };
         };
 
-        # Python environment with test dependencies
+        # =====================================================================
+        # Test Infrastructure
+        # =====================================================================
+        # Why testEnv lists dependencies explicitly (not voiceAgent):
+        #   - Including voiceAgent would create import issues since tests
+        #     need to import from src/ directly via PYTHONPATH
+        #   - We mirror the runtime dependencies here for test isolation
+        #
+        # Why testSuite copies conftest.py:
+        #   - When pytest runs from the nix store, it can't find conftest.py
+        #     in the original source tree. Bundling it ensures fixtures
+        #     (permission_handler, mock_settings, etc.) are discovered.
+        #
+        # Why testRunner uses CLI options instead of pyproject.toml:
+        #   - pytest runs from nix store, can't read pyproject.toml
+        #   - asyncio_mode=auto: Auto-detect async tests without @pytest.mark.asyncio
+        #   - confcutdir: Tell pytest where to find conftest.py
+        # =====================================================================
         testEnv = python.withPackages (ps: [
           ps.pytest
           ps.pytest-asyncio
@@ -103,14 +145,12 @@
           ps.pydantic-settings
         ]);
 
-        # Copy tests and conftest together
         testSuite = pkgs.runCommand "voice-agent-test-suite" {} ''
           mkdir -p $out/unit
           cp ${./tests/conftest.py} $out/conftest.py
           cp -r ${./tests/unit}/* $out/unit/
         '';
 
-        # Test runner as a script
         testRunner = pkgs.writeShellScriptBin "voice-agent-tests" ''
           export PYTHONPATH="${./src}:$PYTHONPATH"
           exec ${testEnv}/bin/python -m pytest ${testSuite}/unit \
@@ -121,6 +161,14 @@
             -v "$@"
         '';
 
+        # =====================================================================
+        # Development Shell
+        # =====================================================================
+        # Why shellHook sets PYTHONPATH:
+        #   - Allows `python -m voice_agent` and `pytest tests/` to work
+        #     directly without installing the package
+        #   - Enables fast iteration: edit src/, run immediately
+        # =====================================================================
         devShell = pkgs.mkShell {
           packages = [
             python
@@ -145,6 +193,18 @@
         };
       in
       {
+        # =====================================================================
+        # Outputs
+        # =====================================================================
+        # packages.default     - The voice-agent Python application
+        # packages.docker-image - Docker image (load with: docker load < result)
+        # packages.tests       - Test runner script
+        #
+        # apps.default         - nix run .#         (runs the bot)
+        # apps.tests           - nix run .#tests    (runs unit tests)
+        #
+        # devShells.default    - nix develop        (dev environment)
+        # =====================================================================
         packages = {
           default = voiceAgent;
           voice-agent = voiceAgent;
