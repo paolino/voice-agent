@@ -48,6 +48,10 @@ class Settings(BaseSettings):
         default_factory=dict,
         description="Mapping of project names to their working directories",
     )
+    session_storage_path: str = Field(
+        default="sessions.json",
+        description="Path to the session storage file",
+    )
 
     def get_allowed_chat_ids(self) -> set[int]:
         """Parse allowed_chat_ids into a set of integers.

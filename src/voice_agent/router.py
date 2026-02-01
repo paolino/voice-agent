@@ -14,6 +14,7 @@ class CommandType(Enum):
     REJECT = auto()
     STATUS = auto()
     NEW_SESSION = auto()
+    CONTINUE_SESSION = auto()
     SWITCH_PROJECT = auto()
     PROMPT = auto()
 
@@ -35,13 +36,16 @@ class ParsedCommand:
 
 # Keywords for command detection (lowercase)
 APPROVE_KEYWORDS = frozenset(
-    {"yes", "approve", "approved", "continue", "allow", "ok", "okay", "go ahead", "yep"}
+    {"yes", "approve", "approved", "allow", "ok", "okay", "go ahead", "yep"}
 )
 REJECT_KEYWORDS = frozenset(
     {"no", "reject", "rejected", "stop", "deny", "denied", "cancel", "nope"}
 )
 STATUS_KEYWORDS = frozenset({"status", "what's happening", "progress", "state"})
 NEW_SESSION_KEYWORDS = frozenset({"new session", "fresh session", "start over", "reset"})
+CONTINUE_SESSION_KEYWORDS = frozenset(
+    {"continue", "resume", "continue session", "resume session", "pick up where we left off"}
+)
 
 
 def parse_command(text: str, projects: dict[str, str] | None = None) -> ParsedCommand:
@@ -72,6 +76,11 @@ def parse_command(text: str, projects: dict[str, str] | None = None) -> ParsedCo
     for keyword in NEW_SESSION_KEYWORDS:
         if keyword in lower_text:
             return ParsedCommand(command_type=CommandType.NEW_SESSION, text=text)
+
+    # Check for continue session keywords
+    for keyword in CONTINUE_SESSION_KEYWORDS:
+        if keyword in lower_text:
+            return ParsedCommand(command_type=CommandType.CONTINUE_SESSION, text=text)
 
     # Check for project switch commands
     if projects:
