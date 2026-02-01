@@ -32,7 +32,7 @@ async def transcribe(
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
                 whisper_url,
-                files={"file": ("audio.oga", audio_data, "audio/ogg")},
+                files={"audio": ("audio.oga", audio_data, "audio/ogg")},
             )
             response.raise_for_status()
 
