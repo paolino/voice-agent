@@ -189,6 +189,29 @@
         '';
 
         # =====================================================================
+        # Documentation
+        # =====================================================================
+        docs = pkgs.stdenv.mkDerivation {
+          name = "voice-agent-docs";
+          src = ./.;
+          buildInputs = [
+            pythonPackages.mkdocs
+            pythonPackages.mkdocs-material
+            pythonPackages.mkdocstrings
+            pythonPackages.mkdocstrings-python
+            pythonPackages.python-telegram-bot
+            pythonPackages.httpx
+            pythonPackages.pydantic
+            pythonPackages.pydantic-settings
+          ];
+          buildPhase = ''
+            export PYTHONPATH="$PWD/src:$PYTHONPATH"
+            mkdocs build -d $out
+          '';
+          dontInstall = true;
+        };
+
+        # =====================================================================
         # Development Shell
         # =====================================================================
         # Why shellHook sets PYTHONPATH:
@@ -210,6 +233,10 @@
             pythonPackages.pytest-mock
             pythonPackages.ruff
             pythonPackages.mypy
+            pythonPackages.mkdocs
+            pythonPackages.mkdocs-material
+            pythonPackages.mkdocstrings
+            pythonPackages.mkdocstrings-python
             pkgs.just
             claudeAgentSdk
           ];
@@ -237,6 +264,7 @@
           voice-agent = voiceAgent;
           docker-image = dockerImage;
           tests = testRunner;
+          docs = docs;
         };
 
         devShells.default = devShell;
