@@ -17,7 +17,7 @@ from telegram.ext import (
 
 from voice_agent.config import Settings
 from voice_agent.router import CommandType, parse_command
-from voice_agent.sessions import SessionManager
+from voice_agent.sessions import SessionManager, SessionStorage
 from voice_agent.transcribe import TranscriptionError, transcribe
 
 logger = logging.getLogger(__name__)
@@ -39,9 +39,11 @@ class VoiceAgentBot:
             settings: Application settings.
         """
         self.settings = settings
+        self.storage = SessionStorage(path=settings.session_storage_path)
         self.session_manager = SessionManager(
             default_cwd=settings.default_cwd,
             permission_timeout=settings.permission_timeout,
+            storage=self.storage,
         )
         self.allowed_chat_ids = settings.get_allowed_chat_ids()
 
@@ -79,6 +81,7 @@ class VoiceAgentBot:
             "Commands:\n"
             "- Say 'status' to check session state\n"
             "- Say 'new session' to start fresh\n"
+            "- Say 'continue' to resume previous session\n"
             "- Say 'yes/approve' or 'no/reject' for permission prompts"
         )
 
@@ -167,6 +170,8 @@ class VoiceAgentBot:
             await self._handle_status(chat_id, update)
         elif command.command_type == CommandType.NEW_SESSION:
             await self._handle_new_session(chat_id, update)
+        elif command.command_type == CommandType.CONTINUE_SESSION:
+            await self._handle_continue_session(chat_id, update)
         elif command.command_type == CommandType.SWITCH_PROJECT:
             await self._handle_switch_project(chat_id, command.project, update)
         else:
@@ -208,6 +213,28 @@ class VoiceAgentBot:
         """Handle new session request."""
         self.session_manager.create_new(chat_id)
         await update.message.reply_text("Started new session.")  # type: ignore
+
+    async def _handle_continue_session(self, chat_id: int, update: Update) -> None:
+        """Handle continue/resume session request."""
+        if self.session_manager.has_resumable_session(chat_id):
+            session = self.session_manager.get(chat_id)
+            await update.message.reply_text(  # type: ignore
+                f"Resuming session in {session.cwd}\n"  # type: ignore
+                f"Messages: {session.message_count}"  # type: ignore
+            )
+        else:
+            # No resumable session, check if there's stored session data
+            session = self.session_manager.get(chat_id)
+            if session:
+                await update.message.reply_text(  # type: ignore
+                    f"Session active in {session.cwd}. No Claude session to resume.\n"
+                    "Send a message to start interacting."
+                )
+            else:
+                await update.message.reply_text(  # type: ignore
+                    "No previous session to resume. Starting fresh."
+                )
+                self.session_manager.create_new(chat_id)
 
     async def _handle_switch_project(
         self, chat_id: int, project: str | None, update: Update

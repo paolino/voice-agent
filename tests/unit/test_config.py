@@ -77,10 +77,14 @@ class TestLoadSettings:
         assert settings.whisper_url == "http://custom:9000/transcribe"
         assert settings.get_allowed_chat_ids() == {111, 222}
 
-    def test_missing_required_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_missing_required_raises(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory
+    ) -> None:
         """Test that missing required fields raise error."""
         # Clear any existing env vars
         monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+        # Change to temp directory so .env file isn't found
+        monkeypatch.chdir(tmp_path)
 
         with pytest.raises(Exception):  # ValidationError
             load_settings()

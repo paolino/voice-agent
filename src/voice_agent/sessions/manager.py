@@ -8,9 +8,13 @@ import subprocess
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from voice_agent.sessions.permissions import PermissionHandler
+
+if TYPE_CHECKING:
+    from voice_agent.sessions.storage import SessionStorage, StoredSession
 
 
 @dataclass
@@ -24,6 +28,7 @@ class Session:
         message_count: Number of messages exchanged.
         permission_handler: Handler for permission requests.
         process: The Claude subprocess if running.
+        claude_session_id: Claude CLI session ID for resume.
     """
 
     chat_id: int
@@ -32,6 +37,7 @@ class Session:
     message_count: int = 0
     permission_handler: PermissionHandler = field(default_factory=PermissionHandler)
     process: subprocess.Popen[str] | None = None
+    claude_session_id: str | None = None
 
     def get_status(self) -> str:
         """Get a human-readable status of this session.
@@ -63,23 +69,69 @@ class SessionManager:
         sessions: Mapping of chat_id to Session.
         default_cwd: Default working directory for new sessions.
         permission_timeout: Timeout for permission requests.
+        storage: Optional persistent storage for sessions.
     """
 
     def __init__(
         self,
         default_cwd: str = "/code",
         permission_timeout: int = 300,
+        storage: "SessionStorage | None" = None,
     ) -> None:
         """Initialize the session manager.
 
         Args:
             default_cwd: Default working directory for new sessions.
             permission_timeout: Timeout in seconds for permission requests.
+            storage: Optional storage for session persistence.
         """
         self.sessions: dict[int, Session] = {}
         self.default_cwd = default_cwd
         self.permission_timeout = permission_timeout
+        self.storage = storage
         self._notify_callbacks: dict[int, Any] = {}
+        self._restore_sessions()
+
+    def _restore_sessions(self) -> None:
+        """Restore sessions from storage."""
+        if not self.storage:
+            return
+
+        for stored in self.storage.list_all():
+            # Parse created_at from ISO format
+            try:
+                created_at = datetime.fromisoformat(stored.created_at)
+            except ValueError:
+                created_at = datetime.now()
+
+            session = Session(
+                chat_id=stored.chat_id,
+                cwd=stored.cwd,
+                created_at=created_at,
+                message_count=stored.message_count,
+                claude_session_id=stored.claude_session_id,
+                permission_handler=PermissionHandler(
+                    timeout=self.permission_timeout,
+                    notify_callback=self._notify_callbacks.get(stored.chat_id),
+                ),
+            )
+            self.sessions[stored.chat_id] = session
+
+    def _persist_session(self, session: Session) -> None:
+        """Persist a session to storage."""
+        if not self.storage:
+            return
+
+        from voice_agent.sessions.storage import StoredSession
+
+        stored = StoredSession(
+            chat_id=session.chat_id,
+            cwd=session.cwd,
+            created_at=session.created_at.isoformat(),
+            message_count=session.message_count,
+            claude_session_id=session.claude_session_id,
+        )
+        self.storage.save(stored)
 
     def set_notify_callback(
         self, chat_id: int, callback: Any
@@ -113,6 +165,7 @@ class SessionManager:
                 ),
             )
             self.sessions[chat_id] = session
+            self._persist_session(session)
         return self.sessions[chat_id]
 
     def create_new(self, chat_id: int, cwd: str | None = None) -> Session:
@@ -141,6 +194,7 @@ class SessionManager:
             ),
         )
         self.sessions[chat_id] = session
+        self._persist_session(session)
         return session
 
     def get(self, chat_id: int) -> Session | None:
@@ -166,10 +220,11 @@ class SessionManager:
         """
         session = self.get_or_create(chat_id)
         session.cwd = cwd
+        self._persist_session(session)
         return session
 
     async def send_prompt(
-        self, chat_id: int, prompt: str
+        self, chat_id: int, prompt: str, resume: bool = True
     ) -> AsyncIterator[str]:
         """Send a prompt to the session and stream responses.
 
@@ -179,6 +234,7 @@ class SessionManager:
         Args:
             chat_id: Telegram chat ID.
             prompt: The prompt to send.
+            resume: Whether to resume existing session if available.
 
         Yields:
             Response chunks from Claude.
@@ -191,8 +247,13 @@ class SessionManager:
             "claude",
             "--print",
             "--dangerously-skip-permissions",
-            prompt,
         ]
+
+        # Resume existing session if available
+        if resume and session.claude_session_id:
+            cmd.extend(["--resume", session.claude_session_id])
+
+        cmd.append(prompt)
 
         try:
             process = await asyncio.create_subprocess_exec(
@@ -232,6 +293,9 @@ class SessionManager:
                 if stderr:
                     yield f"Error: {stderr.decode('utf-8', errors='replace')}"
 
+            # Persist updated session
+            self._persist_session(session)
+
         except FileNotFoundError:
             yield "Error: claude CLI not found. Make sure it's installed and in PATH."
         except Exception as e:
@@ -250,3 +314,50 @@ class SessionManager:
         if not session:
             return None
         return session.get_status()
+
+    def delete_session(self, chat_id: int) -> bool:
+        """Delete a session.
+
+        Args:
+            chat_id: Telegram chat ID.
+
+        Returns:
+            True if session was deleted, False if not found.
+        """
+        if chat_id not in self.sessions:
+            return False
+
+        session = self.sessions[chat_id]
+        if session.process:
+            session.process.terminate()
+
+        del self.sessions[chat_id]
+
+        if self.storage:
+            self.storage.delete(chat_id)
+
+        return True
+
+    def set_claude_session_id(self, chat_id: int, session_id: str | None) -> None:
+        """Set the Claude session ID for resume capability.
+
+        Args:
+            chat_id: Telegram chat ID.
+            session_id: Claude CLI session ID or None to clear.
+        """
+        session = self.get(chat_id)
+        if session:
+            session.claude_session_id = session_id
+            self._persist_session(session)
+
+    def has_resumable_session(self, chat_id: int) -> bool:
+        """Check if a chat has a resumable Claude session.
+
+        Args:
+            chat_id: Telegram chat ID.
+
+        Returns:
+            True if there's a session with a Claude session ID.
+        """
+        session = self.get(chat_id)
+        return session is not None and session.claude_session_id is not None
