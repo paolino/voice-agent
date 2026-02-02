@@ -83,8 +83,9 @@ docker-load:
 # Run Docker container (requires .env file with TELEGRAM_BOT_TOKEN)
 docker-run:
     docker run --rm -it \
+        --network host \
         --env-file .env \
-        -e WHISPER_URL=${WHISPER_URL:-http://host.docker.internal:8080/transcribe} \
+        -e WHISPER_URL=${WHISPER_URL:-http://localhost:9003/transcribe} \
         ghcr.io/paolino/voice-agent:0.1.0
 
 # Build and run Docker container
