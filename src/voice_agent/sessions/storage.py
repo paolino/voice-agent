@@ -262,6 +262,34 @@ class SessionStorage:
         self._save()
         return True
 
+    def rename_session(self, chat_id: int, old_name: str, new_name: str) -> bool:
+        """Rename a session.
+
+        Args:
+            chat_id: Telegram chat ID.
+            old_name: Current session name.
+            new_name: New session name.
+
+        Returns:
+            True if renamed, False if not found or name exists.
+        """
+        state = self._data.get(chat_id)
+        if not state or old_name not in state.sessions:
+            return False
+
+        if new_name in state.sessions:
+            return False
+
+        session = state.sessions.pop(old_name)
+        session.name = new_name
+        state.sessions[new_name] = session
+
+        if state.active_session == old_name:
+            state.active_session = new_name
+
+        self._save()
+        return True
+
     def delete_chat(self, chat_id: int) -> bool:
         """Delete all sessions for a chat.
 
