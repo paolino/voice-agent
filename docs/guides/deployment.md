@@ -77,21 +77,26 @@ The easiest way to run voice-agent with whisper transcription is using docker-co
 services:
   whisper:
     image: ghcr.io/paolino/whisper-server:latest
-    network_mode: host
     environment:
       WHISPER_MODEL: ${WHISPER_MODEL:-small}
       WHISPER_HTTP_PORT: "9003"
       WHISPER_DEVICE: auto
       WHISPER_COMPUTE_TYPE: auto
+    networks:
+      - internal
 
   voice-agent:
     image: ghcr.io/paolino/voice-agent:0.1.0
-    network_mode: host
     environment:
-      WHISPER_URL: http://localhost:9003/transcribe
+      WHISPER_URL: http://whisper:9003/transcribe
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
     depends_on:
       - whisper
+    networks:
+      - internal
+
+networks:
+  internal:
 ```
 
 Start the stack:
