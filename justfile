@@ -90,6 +90,14 @@ docker-run:
 # Build and run Docker container
 docker: docker-build docker-load docker-run
 
+# Start docker-compose stack (voice-agent + whisper-server)
+compose-up:
+    docker compose up -d
+
+# Stop docker-compose stack
+compose-down:
+    docker compose down
+
 # Clean build artifacts
 clean:
     rm -rf build/ dist/ *.egg-info .pytest_cache .mypy_cache .ruff_cache htmlcov/ site/

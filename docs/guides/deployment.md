@@ -68,42 +68,64 @@ sudo journalctl -u voice-agent -f  # View logs
 }
 ```
 
-## Docker
+## Docker Compose
 
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-COPY . .
-RUN pip install -e .
-
-# Claude CLI must be installed and authenticated
-# Mount the claude config directory at runtime
-
-CMD ["python", "-m", "voice_agent"]
-```
+The easiest way to run voice-agent with whisper transcription is using docker-compose:
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
-  voice-agent:
-    build: .
-    environment:
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - WHISPER_URL=http://whisper:8080/transcribe
-      - ALLOWED_CHAT_IDS=${ALLOWED_CHAT_IDS}
-    volumes:
-      - ~/.claude:/root/.claude:ro  # Claude CLI config
-      - /code:/code:rw              # Working directories
-    depends_on:
-      - whisper
-
   whisper:
-    image: your-whisper-server
+    image: ghcr.io/paolino/whisper-server:latest
     ports:
       - "8080:8080"
+
+  voice-agent:
+    image: ghcr.io/paolino/voice-agent:0.1.0
+    environment:
+      WHISPER_URL: http://whisper:8080/transcribe
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+    depends_on:
+      - whisper
+```
+
+Start the stack:
+
+```bash
+# Set your Telegram bot token
+export TELEGRAM_BOT_TOKEN=your-token
+
+# Start services
+docker compose up -d
+
+# View logs
+docker compose logs -f voice-agent
+
+# Stop services
+docker compose down
+```
+
+Or use the justfile recipes:
+
+```bash
+just compose-up    # Start services
+just compose-down  # Stop services
+```
+
+## Docker (standalone)
+
+Build and run the voice-agent container directly:
+
+```bash
+# Build with nix
+nix build .#docker-image
+docker load < result
+
+# Run (requires external whisper server)
+docker run --rm -it \
+    --env-file .env \
+    -e WHISPER_URL=http://host.docker.internal:8080/transcribe \
+    ghcr.io/paolino/voice-agent:0.1.0
 ```
 
 ## Environment Variables

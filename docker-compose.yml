@@ -1,0 +1,13 @@
+services:
+  whisper:
+    image: ghcr.io/paolino/whisper-server:latest
+    ports:
+      - "8080:8080"
+
+  voice-agent:
+    image: ghcr.io/paolino/voice-agent:0.1.0
+    environment:
+      WHISPER_URL: http://whisper:8080/transcribe
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+    depends_on:
+      - whisper
