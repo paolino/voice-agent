@@ -181,7 +181,10 @@ class VoiceAgentBot:
             text = await transcribe(bytes(audio_bytes), self.settings.whisper_url)
             from html import escape
 
-            await update.message.reply_text(f"<i>{escape(text)}</i>", parse_mode="HTML")
+            tag = self._session_tag(chat_id)
+            await update.message.reply_text(
+                f"{tag} <i>{escape(text)}</i>", parse_mode="HTML"
+            )
         except TranscriptionError as e:
             logger.error("Transcription failed: %s", e)
             await update.message.reply_text(f"Transcription failed: {e}")
@@ -559,13 +562,14 @@ class VoiceAgentBot:
             self.session_manager.get_or_create(chat_id)
             sessions = self.session_manager.list_sessions(chat_id)
 
-        # Build session list
+        # Build session list with fruit indicators
         lines = ["📂 <b>Sessions</b>\n"]
-        for s in sessions:
-            check = " ✓" if s.is_active else ""
-            # Truncate cwd to last component for display
+        fruits = self._SESSION_FRUITS
+        for i, s in enumerate(sessions):
+            fruit = fruits[i % len(fruits)]
+            active = " ←" if s.is_active else ""
             cwd_short = s.cwd.split("/")[-1] or s.cwd
-            lines.append(f"[{s.name}{check}] {s.message_count} msgs - {cwd_short}")
+            lines.append(f"{fruit} {s.name}{active} · {s.message_count} msgs · {cwd_short}")
 
         # Build keyboard
         rows: list[list[InlineKeyboardButton]] = []
@@ -573,10 +577,10 @@ class VoiceAgentBot:
         # Switch buttons row
         switch_buttons = [
             InlineKeyboardButton(
-                f"Switch: {s.name}" + (" ✓" if s.is_active else ""),
+                f"{fruits[i % len(fruits)]} {s.name}",
                 callback_data=f"session_switch_{s.name}",
             )
-            for s in sessions
+            for i, s in enumerate(sessions)
         ]
         # Chunk switch buttons into rows of 2
         for i in range(0, len(switch_buttons), 2):
@@ -590,9 +594,9 @@ class VoiceAgentBot:
         # Close buttons row
         close_buttons = [
             InlineKeyboardButton(
-                f"Close: {s.name}", callback_data=f"session_close_{s.name}"
+                f"✕ {fruits[i % len(fruits)]}", callback_data=f"session_close_{s.name}"
             )
-            for s in sessions
+            for i, s in enumerate(sessions)
         ]
         # Chunk close buttons into rows of 2
         for i in range(0, len(close_buttons), 2):
@@ -626,7 +630,8 @@ class VoiceAgentBot:
         """Handle new session button click."""
         name = self.session_manager.generate_session_name(chat_id)
         self.session_manager.create_new(chat_id, name=name)
-        await query.edit_message_text(f"📍 {name}")
+        fruit = self._session_tag(chat_id)
+        await query.edit_message_text(f"{fruit} {name}")
 
     async def _handle_session_switch_callback(
         self, chat_id: int, name: str, query: Any
@@ -634,7 +639,8 @@ class VoiceAgentBot:
         """Handle session switch button click."""
         session = self.session_manager.switch_session(chat_id, name)
         if session:
-            await query.edit_message_text(f"📍 {name}")
+            fruit = self._session_tag(chat_id)
+            await query.edit_message_text(f"{fruit} {name}")
         else:
             await query.edit_message_text(f"Session '{name}' not found.")
 
@@ -701,7 +707,9 @@ class VoiceAgentBot:
             self._prompt_locks[chat_id] = asyncio.Lock()
         return self._prompt_locks[chat_id]
 
-    async def _send_formatted(self, update: Update, text: str) -> None:
+    async def _send_formatted(
+        self, update: Update, text: str, chat_id: int | None = None
+    ) -> None:
         """Send a message with Telegram MarkdownV2 formatting.
 
         Falls back to plain text if formatting fails.
@@ -709,7 +717,11 @@ class VoiceAgentBot:
         Args:
             update: Telegram update for replying.
             text: Text to send (may contain Markdown).
+            chat_id: Optional chat ID for session tag.
         """
+        if chat_id:
+            tag = self._session_tag(chat_id)
+            text = f"{tag} {text}"
         try:
             formatted = convert_markdown_to_telegram(text)
             await update.message.reply_text(  # type: ignore
@@ -720,18 +732,30 @@ class VoiceAgentBot:
             logger.debug("Markdown formatting failed, falling back to plain: %s", e)
             await update.message.reply_text(text)  # type: ignore
 
+    _SESSION_FRUITS = ["🍎", "🍊", "🍋", "🍇", "🍉", "🍓", "🍑", "🍒", "🥝", "🍍"]
+
+    def _session_tag(self, chat_id: int) -> str:
+        """Get session indicator tag for messages."""
+        sessions = self.session_manager.list_sessions(chat_id)
+        active = self.session_manager.get_active_session_name(chat_id)
+        for i, s in enumerate(sessions):
+            if s.name == active:
+                return self._SESSION_FRUITS[i % len(self._SESSION_FRUITS)]
+        return self._SESSION_FRUITS[0]
+
     async def _handle_prompt(self, chat_id: int, text: str, update: Update) -> None:
         """Handle a prompt to send to Claude."""
+        tag = self._session_tag(chat_id)
 
         # Set up notification callback for this chat
         async def notify_permission(tool_name: str, input_data: dict[str, Any]) -> None:
-            desc = f"Claude wants to use {tool_name}"
+            desc = f"{tag} Claude wants to use {tool_name}"
             if tool_name == "Bash":
-                desc = f"Claude wants to run: {input_data.get('command', 'unknown')}"
+                cmd = input_data.get("command", "unknown")
+                desc = f"{tag} Run: {cmd}"
             elif tool_name in ("Write", "Edit"):
-                desc = (
-                    f"Claude wants to modify: {input_data.get('file_path', 'unknown')}"
-                )
+                path = input_data.get("file_path", "unknown")
+                desc = f"{tag} Modify: {path}"
             keyboard = InlineKeyboardMarkup(
                 [
                     [
@@ -752,7 +776,7 @@ class VoiceAgentBot:
             # Notify if we're waiting for another prompt to finish
             if lock.locked():
                 await update.message.reply_text(
-                    "(Queued, waiting for previous request...)"
+                    f"{tag} (Queued, waiting for previous request...)"
                 )  # type: ignore
             async with lock:
                 logger.info("Processing prompt for chat %s: %s", chat_id, text[:50])
@@ -763,7 +787,7 @@ class VoiceAgentBot:
                     [[InlineKeyboardButton("🛑 Stop", callback_data="cancel")]]
                 )
                 working_msg = await update.message.reply_text(  # type: ignore
-                    "⏳ Working...", reply_markup=stop_keyboard
+                    f"{tag} ⏳ Working...", reply_markup=stop_keyboard
                 )
 
                 response_buffer: list[str] = []
@@ -778,13 +802,15 @@ class VoiceAgentBot:
                         # Send in batches to avoid too many messages
                         if len(response_buffer) >= 5:
                             await self._send_formatted(
-                                update, "\n".join(response_buffer)
+                                update, "\n".join(response_buffer), chat_id
                             )
                             response_buffer = []
 
                     # Send remaining
                     if response_buffer and not self._cancel_flags.get(chat_id, False):
-                        await self._send_formatted(update, "\n".join(response_buffer))
+                        await self._send_formatted(
+                            update, "\n".join(response_buffer), chat_id
+                        )
                 except asyncio.CancelledError:
                     logger.info("Task cancelled for chat %s", chat_id)
                 except Exception as e:
