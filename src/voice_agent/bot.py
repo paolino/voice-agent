@@ -401,6 +401,11 @@ class VoiceAgentBot:
                     await query.edit_message_text("Invalid approval index.")
             except ValueError:
                 await query.edit_message_text("Invalid revoke command.")
+        elif query.data == "confirm_restart":
+            msg = await self._do_restart(chat_id)
+            await query.edit_message_text(msg)
+        elif query.data == "cancel_restart":
+            await query.edit_message_text("Restart cancelled.")
 
     async def _handle_status(self, chat_id: int, update: Update) -> None:
         """Handle status request."""
@@ -466,7 +471,27 @@ class VoiceAgentBot:
             await update.message.reply_text("No running task to cancel.")  # type: ignore
 
     async def _handle_restart(self, chat_id: int, update: Update) -> None:
-        """Handle restart request - cancel task, clear sticky approvals, new session."""
+        """Handle restart request - show confirmation dialog."""
+        session = self.session_manager.get(chat_id)
+        sticky_count = len(session.permission_handler.get_sticky_approvals()) if session else 0
+
+        # Build confirmation message
+        msg = "Are you sure you want to restart?"
+        if sticky_count > 0:
+            msg += f"\n\nThis will clear {sticky_count} auto-approval(s)."
+
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("Yes, restart", callback_data="confirm_restart"),
+                    InlineKeyboardButton("Cancel", callback_data="cancel_restart"),
+                ]
+            ]
+        )
+        await update.message.reply_text(msg, reply_markup=keyboard)  # type: ignore
+
+    async def _do_restart(self, chat_id: int) -> str:
+        """Actually perform the restart. Returns status message."""
         # Cancel any running task first
         task = self._active_tasks.get(chat_id)
         if task and not task.done():
@@ -483,15 +508,15 @@ class VoiceAgentBot:
         if session:
             sticky_count = session.permission_handler.clear_sticky_approvals()
 
-        # Create fresh session
-        self.session_manager.create_new(chat_id)
+        # Create fresh session (use async to properly close SDK client)
+        await self.session_manager.create_new_async(chat_id)
 
-        # Report what was done
+        # Build status message
         parts = ["🔄 Restarted."]
         if sticky_count > 0:
-            parts.append(f"Cleared {sticky_count} sticky approval(s).")
+            parts.append(f"Cleared {sticky_count} auto-approval(s).")
         parts.append("Fresh session started.")
-        await update.message.reply_text(" ".join(parts))  # type: ignore
+        return " ".join(parts)
 
     async def restart_command(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE

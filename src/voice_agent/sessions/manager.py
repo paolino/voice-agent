@@ -323,11 +323,21 @@ class SessionManager:
             session: The session whose client to close.
         """
         if session.sdk_client is not None:
-            try:
-                await session.sdk_client.__aexit__(None, None, None)
-            except Exception as e:
-                logger.warning("Error closing SDK client: %s", e)
+            client = session.sdk_client
             session.sdk_client = None
+
+            # The SDK client cannot be closed from a different async task than
+            # where it was created. Instead of calling __aexit__, we directly
+            # terminate the underlying subprocess to avoid spinning task groups.
+            try:
+                transport = getattr(client, "_transport", None)
+                if transport is not None:
+                    process = getattr(transport, "_process", None)
+                    if process is not None:
+                        process.terminate()
+                        logger.info("Terminated SDK client subprocess")
+            except Exception as e:
+                logger.warning("Error terminating SDK client: %s", e)
 
     async def send_prompt(
         self, chat_id: int, prompt: str, resume: bool = True
