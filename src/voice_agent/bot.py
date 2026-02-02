@@ -181,8 +181,11 @@ class VoiceAgentBot:
             text = await transcribe(bytes(audio_bytes), self.settings.whisper_url)
             from html import escape
 
+            # Delete the voice message to keep chat clean
+            await update.message.delete()
+
             tag = self._session_tag(chat_id)
-            await update.message.reply_text(
+            await update.message.chat.send_message(
                 f"{tag} <i>{escape(text)}</i>", parse_mode="HTML"
             )
         except TranscriptionError as e:
