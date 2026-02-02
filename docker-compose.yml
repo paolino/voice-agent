@@ -10,14 +10,21 @@ services:
       - internal
 
   voice-agent:
-    image: ghcr.io/paolino/voice-agent:0.1.0
+    image: ghcr.io/paolino/voice-agent:${VOICE_AGENT_VERSION:-latest}
+    env_file: .env
     environment:
       WHISPER_URL: http://whisper:9003/transcribe
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      SESSION_STORAGE_PATH: /data/sessions.json
+    volumes:
+      - voice-agent-data:/data
+      - ${HOME}/.claude:/root/.claude:ro
     depends_on:
       - whisper
     networks:
       - internal
+
+volumes:
+  voice-agent-data:
 
 networks:
   internal:
