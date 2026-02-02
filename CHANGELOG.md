@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.0](https://github.com/paolino/voice-agent/compare/v0.1.0...v0.2.0) (2026-02-02)
+
+
+### Features
+
+* add /restart command to clear session and sticky approvals ([737b532](https://github.com/paolino/voice-agent/commit/737b5327623baaf2d0f26a916a3f94cf5624bed6)), closes [#35](https://github.com/paolino/voice-agent/issues/35)
+* manage permission auto-approvals via Telegram ([22a1108](https://github.com/paolino/voice-agent/commit/22a11089db13b1ec11c0d4ecf6246dcf5e06f27f)), closes [#32](https://github.com/paolino/voice-agent/issues/32)
+
+
+### Bug Fixes
+
+* load user config (CLAUDE.md, MCP servers) on session start ([5bb1fdf](https://github.com/paolino/voice-agent/commit/5bb1fdf56bc6f5be5dd62e338258360d34872a08)), closes [#37](https://github.com/paolino/voice-agent/issues/37)
+* require exact match for restart and add confirmation dialog ([f8f6462](https://github.com/paolino/voice-agent/commit/f8f6462383c53c53b7e712e1e6bfe82226b7d036))
+
 ## 0.1.0 (2026-02-01)
 
 
