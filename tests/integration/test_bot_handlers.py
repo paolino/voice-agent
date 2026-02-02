@@ -223,3 +223,63 @@ class TestVoiceAgentBot:
 
         # Should return early without error
         await bot.handle_text(update, MagicMock())
+
+    async def test_handle_transcription_restart(self, bot: VoiceAgentBot) -> None:
+        """Test handling restart request clears session and sticky approvals."""
+        from voice_agent.sessions.permissions import StickyApproval
+
+        # Create existing session with sticky approvals
+        session = bot.session_manager.get_or_create(123)
+        session.message_count = 10
+        session.permission_handler.sticky_approvals.append(
+            StickyApproval(tool_name="Bash", pattern={"command": "ls"})
+        )
+
+        update = MagicMock()
+        update.effective_chat.id = 123
+        update.message.reply_text = AsyncMock()
+
+        await bot._handle_transcription(123, "restart", update)
+
+        # Should have called reply_text with restart message
+        update.message.reply_text.assert_called_once()
+        call_args = update.message.reply_text.call_args[0][0]
+        assert "Restarted" in call_args
+        assert "Cleared 1 sticky approval" in call_args
+        assert "Fresh session" in call_args
+
+        # Session should be reset
+        new_session = bot.session_manager.get(123)
+        assert new_session is not None
+        assert new_session.message_count == 0
+        assert len(new_session.permission_handler.sticky_approvals) == 0
+
+    async def test_restart_command(self, bot: VoiceAgentBot) -> None:
+        """Test /restart command handler."""
+        # Create existing session
+        session = bot.session_manager.get_or_create(123)
+        session.message_count = 5
+
+        update = MagicMock()
+        update.effective_chat.id = 123
+        update.message.reply_text = AsyncMock()
+
+        await bot.restart_command(update, MagicMock())
+
+        update.message.reply_text.assert_called_once()
+        call_args = update.message.reply_text.call_args[0][0]
+        assert "Restarted" in call_args
+
+        # Session should be reset
+        new_session = bot.session_manager.get(123)
+        assert new_session.message_count == 0
+
+    async def test_restart_command_not_allowed(self, bot: VoiceAgentBot) -> None:
+        """Test /restart command for non-allowed chat."""
+        update = MagicMock()
+        update.effective_chat.id = 999
+        update.message.reply_text = AsyncMock()
+
+        await bot.restart_command(update, MagicMock())
+
+        update.message.reply_text.assert_not_called()

@@ -89,6 +89,7 @@ class VoiceAgentBot:
             "- 'status' to check session state\n"
             "- 'new session' to start fresh\n"
             "- 'continue' to resume previous session\n"
+            "- 'restart' to clear everything and start fresh\n"
             "- 'yes/approve' or 'no/reject' for permission prompts\n"
             "- 'always approve' to sticky-approve similar tool calls\n"
             "- 'clear sticky' to reset sticky approvals\n"
@@ -220,6 +221,8 @@ class VoiceAgentBot:
             await self._handle_cancel(chat_id, update)
         elif command.command_type == CommandType.LIST_APPROVALS:
             await self._handle_list_approvals(chat_id, update)
+        elif command.command_type == CommandType.RESTART:
+            await self._handle_restart(chat_id, update)
         else:
             await self._handle_prompt(chat_id, command.text, update)
 
@@ -462,6 +465,52 @@ class VoiceAgentBot:
         else:
             await update.message.reply_text("No running task to cancel.")  # type: ignore
 
+    async def _handle_restart(self, chat_id: int, update: Update) -> None:
+        """Handle restart request - cancel task, clear sticky approvals, new session."""
+        # Cancel any running task first
+        task = self._active_tasks.get(chat_id)
+        if task and not task.done():
+            self._cancel_flags[chat_id] = True
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+            self._active_tasks.pop(chat_id, None)
+            self._cancel_flags.pop(chat_id, None)
+
+        # Clear sticky approvals from existing session
+        session = self.session_manager.get(chat_id)
+        sticky_count = 0
+        if session:
+            sticky_count = session.permission_handler.clear_sticky_approvals()
+
+        # Create fresh session
+        self.session_manager.create_new(chat_id)
+
+        # Report what was done
+        parts = ["🔄 Restarted."]
+        if sticky_count > 0:
+            parts.append(f"Cleared {sticky_count} sticky approval(s).")
+        parts.append("Fresh session started.")
+        await update.message.reply_text(" ".join(parts))  # type: ignore
+
+    async def restart_command(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Handle /restart command.
+
+        Args:
+            update: Telegram update.
+            context: Callback context.
+        """
+        if not update.effective_chat:
+            return
+
+        chat_id = update.effective_chat.id
+        if not self.is_allowed(chat_id):
+            return
+
+        await self._handle_restart(chat_id, update)
+
     def _get_prompt_lock(self, chat_id: int) -> asyncio.Lock:
         """Get or create a lock for serializing prompts per chat."""
         if chat_id not in self._prompt_locks:
@@ -582,6 +631,7 @@ class VoiceAgentBot:
         # Add handlers
         app.add_handler(CommandHandler("start", self.start_command))
         app.add_handler(CommandHandler("status", self.status_command))
+        app.add_handler(CommandHandler("restart", self.restart_command))
         app.add_handler(CommandHandler("approvals", self.approvals_command))
         app.add_handler(CallbackQueryHandler(self.handle_callback))
         app.add_handler(MessageHandler(filters.VOICE, self.handle_voice))

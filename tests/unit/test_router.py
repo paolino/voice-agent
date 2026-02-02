@@ -180,3 +180,20 @@ class TestParseCommand:
         result = parse_command(text)
         assert result.command_type == CommandType.LIST_APPROVALS
         assert result.text == text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "restart",
+            "Restart",
+            "restart session",
+            "Restart Session",
+            "riavvia",
+            "ricomincia",
+        ],
+    )
+    def test_restart_keywords(self, text: str) -> None:
+        """Test restart keyword detection."""
+        result = parse_command(text)
+        assert result.command_type == CommandType.RESTART
+        assert result.text == text
