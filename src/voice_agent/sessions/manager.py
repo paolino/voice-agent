@@ -305,6 +305,8 @@ class SessionManager:
                 cwd=session.cwd,
                 can_use_tool=permission_callback,
                 cli_path=cli_path,
+                # Load user, project, and local settings (CLAUDE.md, MCP servers, etc.)
+                setting_sources=["user", "project", "local"],
             )
             session.sdk_client = ClaudeSDKClient(options=options)
             await session.sdk_client.__aenter__()
