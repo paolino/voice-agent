@@ -411,6 +411,38 @@ class SessionManager:
             counter += 1
         return f"session-{counter}"
 
+    def rename_session(self, chat_id: int, old_name: str, new_name: str) -> bool:
+        """Rename a session.
+
+        Args:
+            chat_id: Telegram chat ID.
+            old_name: Current session name.
+            new_name: New session name.
+
+        Returns:
+            True if renamed, False if not found or name already exists.
+        """
+        if chat_id not in self.sessions:
+            return False
+
+        if old_name not in self.sessions[chat_id]:
+            return False
+
+        if new_name in self.sessions[chat_id]:
+            return False
+
+        session = self.sessions[chat_id].pop(old_name)
+        session.name = new_name
+        self.sessions[chat_id][new_name] = session
+
+        if self.active_sessions.get(chat_id) == old_name:
+            self.active_sessions[chat_id] = new_name
+
+        if self.storage:
+            self.storage.rename_session(chat_id, old_name, new_name)
+
+        return True
+
     def set_cwd(self, chat_id: int, cwd: str) -> Session:
         """Set the working directory for the active session.
 

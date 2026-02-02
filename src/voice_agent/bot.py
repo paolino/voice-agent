@@ -53,6 +53,7 @@ class VoiceAgentBot:
         self._prompt_locks: dict[int, asyncio.Lock] = {}
         self._active_tasks: dict[int, asyncio.Task[None]] = {}
         self._cancel_flags: dict[int, bool] = {}
+        self._pending_renames: dict[int, str] = {}  # chat_id -> session name to rename
 
     def is_allowed(self, chat_id: int) -> bool:
         """Check if a chat ID is allowed to use the bot.
@@ -138,6 +139,18 @@ class VoiceAgentBot:
 
         text = update.message.text
         if not text:
+            return
+
+        # Check for pending rename
+        if chat_id in self._pending_renames:
+            old_name = self._pending_renames.pop(chat_id)
+            new_name = text.strip()
+            if self.session_manager.rename_session(chat_id, old_name, new_name):
+                await update.message.reply_text(f"Renamed '{old_name}' → '{new_name}'")
+            else:
+                await update.message.reply_text(
+                    f"Failed to rename. Name '{new_name}' may already exist."
+                )
             return
 
         logger.info("Received text from chat %s: %s", chat_id, text[:50])
@@ -373,6 +386,10 @@ class VoiceAgentBot:
             name = query.data[14:]
             await self._handle_session_close_callback(chat_id, name, query)
             return
+        if query.data.startswith("session_rename_"):
+            name = query.data[15:]
+            await self._handle_session_rename_callback(chat_id, name, query)
+            return
 
         session = self.session_manager.get(chat_id)
         if not session:
@@ -594,6 +611,16 @@ class VoiceAgentBot:
             [InlineKeyboardButton("+ New Session", callback_data="session_new")]
         )
 
+        # Rename buttons row
+        rename_buttons = [
+            InlineKeyboardButton(
+                f"✏️ {fruits[i % len(fruits)]}", callback_data=f"session_rename_{s.name}"
+            )
+            for i, s in enumerate(sessions)
+        ]
+        for i in range(0, len(rename_buttons), 2):
+            rows.append(rename_buttons[i : i + 2])
+
         # Close buttons row
         close_buttons = [
             InlineKeyboardButton(
@@ -601,7 +628,6 @@ class VoiceAgentBot:
             )
             for i, s in enumerate(sessions)
         ]
-        # Chunk close buttons into rows of 2
         for i in range(0, len(close_buttons), 2):
             rows.append(close_buttons[i : i + 2])
 
@@ -685,6 +711,13 @@ class VoiceAgentBot:
             await query.delete_message()
         else:
             await query.edit_message_text(f"Session '{name}' not found.")
+
+    async def _handle_session_rename_callback(
+        self, chat_id: int, name: str, query: Any
+    ) -> None:
+        """Handle session rename button click - prompt for new name."""
+        self._pending_renames[chat_id] = name
+        await query.edit_message_text(f"Send new name for session '{name}':")
 
     async def restart_command(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
