@@ -361,7 +361,7 @@ class VoiceAgentBot:
             await self._handle_session_close_confirm_callback(chat_id, name, query)
             return
         if query.data.startswith("session_close_cancel_"):
-            await query.edit_message_text("Close cancelled.")
+            await query.delete_message()
             return
         if query.data.startswith("session_close_"):
             name = query.data[14:]
@@ -626,7 +626,7 @@ class VoiceAgentBot:
         """Handle new session button click."""
         name = self.session_manager.generate_session_name(chat_id)
         self.session_manager.create_new(chat_id, name=name)
-        await query.edit_message_text(f"Created and switched to session '{name}'.")
+        await query.edit_message_text(f"📍 {name}")
 
     async def _handle_session_switch_callback(
         self, chat_id: int, name: str, query: Any
@@ -634,7 +634,7 @@ class VoiceAgentBot:
         """Handle session switch button click."""
         session = self.session_manager.switch_session(chat_id, name)
         if session:
-            await query.edit_message_text(f"Switched to session '{name}'.")
+            await query.edit_message_text(f"📍 {name}")
         else:
             await query.edit_message_text(f"Session '{name}' not found.")
 
@@ -673,15 +673,7 @@ class VoiceAgentBot:
         """Handle session close confirmation."""
         closed = await self.session_manager.close_session_async(chat_id, name)
         if closed:
-            active = self.session_manager.get_active_session_name(chat_id)
-            if active:
-                await query.edit_message_text(
-                    f"Closed session '{name}'. Active session: '{active}'."
-                )
-            else:
-                await query.edit_message_text(
-                    f"Closed session '{name}'. No sessions remaining."
-                )
+            await query.delete_message()
         else:
             await query.edit_message_text(f"Session '{name}' not found.")
 
