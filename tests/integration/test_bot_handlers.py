@@ -224,8 +224,10 @@ class TestVoiceAgentBot:
         # Should return early without error
         await bot.handle_text(update, MagicMock())
 
-    async def test_handle_transcription_restart(self, bot: VoiceAgentBot) -> None:
-        """Test handling restart request clears session and sticky approvals."""
+    async def test_handle_transcription_restart_shows_confirmation(
+        self, bot: VoiceAgentBot
+    ) -> None:
+        """Test handling restart request shows confirmation dialog."""
         from voice_agent.sessions.permissions import StickyApproval
 
         # Create existing session with sticky approvals
@@ -241,21 +243,74 @@ class TestVoiceAgentBot:
 
         await bot._handle_transcription(123, "restart", update)
 
-        # Should have called reply_text with restart message
+        # Should show confirmation dialog, not immediate restart
         update.message.reply_text.assert_called_once()
-        call_args = update.message.reply_text.call_args[0][0]
+        call_args = update.message.reply_text.call_args
+        assert "Are you sure" in call_args[0][0]
+        assert "1 auto-approval" in call_args[0][0]
+        assert "reply_markup" in call_args[1]
+
+        # Session should NOT be reset yet
+        same_session = bot.session_manager.get(123)
+        assert same_session.message_count == 10
+        assert len(same_session.permission_handler.sticky_approvals) == 1
+
+    async def test_restart_confirm_callback(self, bot: VoiceAgentBot) -> None:
+        """Test confirm_restart callback actually restarts."""
+        from voice_agent.sessions.permissions import StickyApproval
+
+        # Create existing session with sticky approvals
+        session = bot.session_manager.get_or_create(123)
+        session.message_count = 10
+        session.permission_handler.sticky_approvals.append(
+            StickyApproval(tool_name="Bash", pattern={"command": "ls"})
+        )
+
+        update = MagicMock()
+        query = MagicMock()
+        query.data = "confirm_restart"
+        query.message.chat.id = 123
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+        update.callback_query = query
+
+        await bot.handle_callback(update, MagicMock())
+
+        # Should have restarted
+        query.edit_message_text.assert_called_once()
+        call_args = query.edit_message_text.call_args[0][0]
         assert "Restarted" in call_args
-        assert "Cleared 1 sticky approval" in call_args
-        assert "Fresh session" in call_args
+        assert "Cleared 1 auto-approval" in call_args
 
         # Session should be reset
         new_session = bot.session_manager.get(123)
-        assert new_session is not None
         assert new_session.message_count == 0
         assert len(new_session.permission_handler.sticky_approvals) == 0
 
+    async def test_restart_cancel_callback(self, bot: VoiceAgentBot) -> None:
+        """Test cancel_restart callback cancels restart."""
+        # Create existing session
+        session = bot.session_manager.get_or_create(123)
+        session.message_count = 5
+
+        update = MagicMock()
+        query = MagicMock()
+        query.data = "cancel_restart"
+        query.message.chat.id = 123
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+        update.callback_query = query
+
+        await bot.handle_callback(update, MagicMock())
+
+        query.edit_message_text.assert_called_once_with("Restart cancelled.")
+
+        # Session should NOT be reset
+        same_session = bot.session_manager.get(123)
+        assert same_session.message_count == 5
+
     async def test_restart_command(self, bot: VoiceAgentBot) -> None:
-        """Test /restart command handler."""
+        """Test /restart command shows confirmation."""
         # Create existing session
         session = bot.session_manager.get_or_create(123)
         session.message_count = 5
@@ -267,12 +322,12 @@ class TestVoiceAgentBot:
         await bot.restart_command(update, MagicMock())
 
         update.message.reply_text.assert_called_once()
-        call_args = update.message.reply_text.call_args[0][0]
-        assert "Restarted" in call_args
+        call_args = update.message.reply_text.call_args
+        assert "Are you sure" in call_args[0][0]
 
-        # Session should be reset
-        new_session = bot.session_manager.get(123)
-        assert new_session.message_count == 0
+        # Session should NOT be reset yet
+        same_session = bot.session_manager.get(123)
+        assert same_session.message_count == 5
 
     async def test_restart_command_not_allowed(self, bot: VoiceAgentBot) -> None:
         """Test /restart command for non-allowed chat."""

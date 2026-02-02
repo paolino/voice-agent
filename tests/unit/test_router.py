@@ -197,3 +197,18 @@ class TestParseCommand:
         result = parse_command(text)
         assert result.command_type == CommandType.RESTART
         assert result.text == text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "just restart",
+            "please restart the server",
+            "can you restart?",
+            "restart it now",
+        ],
+    )
+    def test_restart_substring_not_matched(self, text: str) -> None:
+        """Test that restart as substring does NOT trigger RESTART command."""
+        result = parse_command(text)
+        assert result.command_type == CommandType.PROMPT
+        assert result.text == text

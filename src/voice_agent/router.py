@@ -161,10 +161,9 @@ def parse_command(text: str, projects: dict[str, str] | None = None) -> ParsedCo
         if keyword in lower_text:
             return ParsedCommand(command_type=CommandType.CANCEL, text=text)
 
-    # Check for restart keywords
-    for keyword in RESTART_KEYWORDS:
-        if keyword in lower_text:
-            return ParsedCommand(command_type=CommandType.RESTART, text=text)
+    # Check for restart keywords (exact match to avoid false positives)
+    if lower_text in RESTART_KEYWORDS:
+        return ParsedCommand(command_type=CommandType.RESTART, text=text)
 
     # Check for project switch commands
     if projects:
