@@ -212,3 +212,21 @@ class TestParseCommand:
         result = parse_command(text)
         assert result.command_type == CommandType.PROMPT
         assert result.text == text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "sessions",
+            "Sessions",
+            "show sessions",
+            "Show Sessions",
+            "list sessions",
+            "List Sessions",
+            "my sessions",
+        ],
+    )
+    def test_sessions_keywords(self, text: str) -> None:
+        """Test sessions keyword detection."""
+        result = parse_command(text)
+        assert result.command_type == CommandType.SESSIONS
+        assert result.text == text

@@ -1,15 +1,17 @@
 """Session management for Claude Code SDK."""
 
-from voice_agent.sessions.manager import Session, SessionManager
+from voice_agent.sessions.manager import Session, SessionInfo, SessionManager
 from voice_agent.sessions.permissions import (
     PermissionHandler,
     PermissionState,
     StickyApproval,
 )
-from voice_agent.sessions.storage import SessionStorage, StoredSession
+from voice_agent.sessions.storage import ChatStoredState, SessionStorage, StoredSession
 
 __all__ = [
+    "ChatStoredState",
     "Session",
+    "SessionInfo",
     "SessionManager",
     "PermissionHandler",
     "PermissionState",

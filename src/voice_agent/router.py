@@ -21,6 +21,7 @@ class CommandType(Enum):
     SWITCH_PROJECT = auto()
     CANCEL = auto()
     RESTART = auto()
+    SESSIONS = auto()
     PROMPT = auto()
 
 
@@ -104,6 +105,14 @@ RESTART_KEYWORDS = frozenset(
         "ricomincia",
     }
 )
+SESSIONS_KEYWORDS = frozenset(
+    {
+        "sessions",
+        "show sessions",
+        "list sessions",
+        "my sessions",
+    }
+)
 
 
 def parse_command(text: str, projects: dict[str, str] | None = None) -> ParsedCommand:
@@ -164,6 +173,11 @@ def parse_command(text: str, projects: dict[str, str] | None = None) -> ParsedCo
     # Check for restart keywords (exact match to avoid false positives)
     if lower_text in RESTART_KEYWORDS:
         return ParsedCommand(command_type=CommandType.RESTART, text=text)
+
+    # Check for sessions keywords
+    for keyword in SESSIONS_KEYWORDS:
+        if keyword in lower_text:
+            return ParsedCommand(command_type=CommandType.SESSIONS, text=text)
 
     # Check for project switch commands
     if projects:

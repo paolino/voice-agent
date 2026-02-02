@@ -17,6 +17,7 @@ class TestSessionManager:
         session = session_manager.get_or_create(123)
 
         assert session.chat_id == 123
+        assert session.name == "main"
         assert session.cwd == "/code"
         assert session.message_count == 0
 
@@ -35,7 +36,7 @@ class TestSessionManager:
     def test_create_new_replaces_existing(
         self, session_manager: SessionManager
     ) -> None:
-        """Test creating new session replaces existing."""
+        """Test creating new session replaces existing with same name."""
         session1 = session_manager.get_or_create(123)
         session1.message_count = 5
 
@@ -43,6 +44,7 @@ class TestSessionManager:
 
         assert session1 is not session2
         assert session2.message_count == 0
+        assert session2.name == "main"
 
     def test_get_nonexistent_returns_none(
         self, session_manager: SessionManager
@@ -64,6 +66,7 @@ class TestSessionManager:
         status = session_manager.get_status(123)
 
         assert status is not None
+        assert "Session: main" in status
         assert "Working directory: /code" in status
         assert "Messages: 0" in status
 
@@ -96,6 +99,103 @@ class TestSessionManager:
         status = session.get_status()
         assert "Pending approval" in status
         assert "Write file" in status
+
+
+@pytest.mark.integration
+class TestSessionManagerMultiSession:
+    """Integration tests for multi-session support."""
+
+    def test_create_named_session(self, session_manager: SessionManager) -> None:
+        """Test creating a named session."""
+        session = session_manager.get_or_create(123, name="work")
+
+        assert session.name == "work"
+        assert session.chat_id == 123
+
+    def test_list_sessions(self, session_manager: SessionManager) -> None:
+        """Test listing all sessions for a chat."""
+        session_manager.get_or_create(123, name="main")
+        session_manager.create_new(123, name="work")
+
+        sessions = session_manager.list_sessions(123)
+
+        assert len(sessions) == 2
+        names = {s.name for s in sessions}
+        assert names == {"main", "work"}
+
+    def test_switch_session(self, session_manager: SessionManager) -> None:
+        """Test switching between sessions."""
+        session_manager.get_or_create(123, name="main")
+        session_manager.create_new(123, name="work")
+
+        # Active is work (last created)
+        assert session_manager.get_active_session_name(123) == "work"
+
+        # Switch to main
+        session = session_manager.switch_session(123, "main")
+        assert session is not None
+        assert session.name == "main"
+        assert session_manager.get_active_session_name(123) == "main"
+
+    def test_switch_nonexistent_returns_none(
+        self, session_manager: SessionManager
+    ) -> None:
+        """Test switching to nonexistent session returns None."""
+        session_manager.get_or_create(123)
+
+        result = session_manager.switch_session(123, "nonexistent")
+        assert result is None
+
+    def test_generate_session_name(self, session_manager: SessionManager) -> None:
+        """Test generating unique session names."""
+        session_manager.get_or_create(123, name="main")
+
+        name = session_manager.generate_session_name(123)
+        assert name == "session-2"
+
+        session_manager.create_new(123, name="session-2")
+        name = session_manager.generate_session_name(123)
+        assert name == "session-3"
+
+    def test_close_session(self, session_manager: SessionManager) -> None:
+        """Test closing a specific session."""
+        session_manager.get_or_create(123, name="main")
+        session_manager.create_new(123, name="work")
+
+        closed = session_manager.close_session(123, "work")
+        assert closed is True
+
+        sessions = session_manager.list_sessions(123)
+        assert len(sessions) == 1
+        assert sessions[0].name == "main"
+
+    def test_close_active_session_switches(
+        self, session_manager: SessionManager
+    ) -> None:
+        """Test closing active session switches to another."""
+        session_manager.get_or_create(123, name="main")
+        session_manager.create_new(123, name="work")
+
+        # Active is work
+        assert session_manager.get_active_session_name(123) == "work"
+
+        # Close work
+        session_manager.close_session(123, "work")
+
+        # Active should be main now
+        assert session_manager.get_active_session_name(123) == "main"
+
+    def test_session_info_is_active(self, session_manager: SessionManager) -> None:
+        """Test SessionInfo.is_active flag."""
+        session_manager.get_or_create(123, name="main")
+        session_manager.create_new(123, name="work")
+
+        sessions = session_manager.list_sessions(123)
+        main_info = next(s for s in sessions if s.name == "main")
+        work_info = next(s for s in sessions if s.name == "work")
+
+        assert work_info.is_active is True
+        assert main_info.is_active is False
 
 
 @pytest.mark.integration

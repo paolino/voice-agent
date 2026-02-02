@@ -84,9 +84,10 @@ class VoiceAgentBot:
             return
 
         await update.message.reply_text(  # type: ignore
-            "Voice Agent ready. Send a voice or text message to interact with Claude Code.\n\n"
+            "Voice Agent ready. Send a voice or text message.\n\n"
             "Commands:\n"
             "- 'status' to check session state\n"
+            "- 'sessions' to manage multiple sessions\n"
             "- 'new session' to start fresh\n"
             "- 'continue' to resume previous session\n"
             "- 'restart' to clear everything and start fresh\n"
@@ -223,6 +224,8 @@ class VoiceAgentBot:
             await self._handle_list_approvals(chat_id, update)
         elif command.command_type == CommandType.RESTART:
             await self._handle_restart(chat_id, update)
+        elif command.command_type == CommandType.SESSIONS:
+            await self._handle_sessions(chat_id, update)
         else:
             await self._handle_prompt(chat_id, command.text, update)
 
@@ -345,6 +348,26 @@ class VoiceAgentBot:
         if not chat_id or not self.is_allowed(chat_id):
             return
 
+        # Handle session operations first (don't require existing session)
+        if query.data == "session_new":
+            await self._handle_session_new_callback(chat_id, query)
+            return
+        if query.data.startswith("session_switch_"):
+            name = query.data[15:]
+            await self._handle_session_switch_callback(chat_id, name, query)
+            return
+        if query.data.startswith("session_close_confirm_"):
+            name = query.data[22:]
+            await self._handle_session_close_confirm_callback(chat_id, name, query)
+            return
+        if query.data.startswith("session_close_cancel_"):
+            await query.edit_message_text("Close cancelled.")
+            return
+        if query.data.startswith("session_close_"):
+            name = query.data[14:]
+            await self._handle_session_close_callback(chat_id, name, query)
+            return
+
         session = self.session_manager.get(chat_id)
         if not session:
             await query.edit_message_text("No active session.")
@@ -447,8 +470,9 @@ class VoiceAgentBot:
     ) -> None:
         """Handle project switch request."""
         if not project or project not in self.settings.projects:
+            projects = ", ".join(self.settings.projects.keys())
             await update.message.reply_text(  # type: ignore
-                f"Unknown project. Available: {', '.join(self.settings.projects.keys())}"
+                f"Unknown project. Available: {projects}"
             )
             return
 
@@ -473,7 +497,9 @@ class VoiceAgentBot:
     async def _handle_restart(self, chat_id: int, update: Update) -> None:
         """Handle restart request - show confirmation dialog."""
         session = self.session_manager.get(chat_id)
-        sticky_count = len(session.permission_handler.get_sticky_approvals()) if session else 0
+        sticky_count = (
+            len(session.permission_handler.get_sticky_approvals()) if session else 0
+        )
 
         # Build confirmation message
         msg = "Are you sure you want to restart?"
@@ -483,7 +509,9 @@ class VoiceAgentBot:
         keyboard = InlineKeyboardMarkup(
             [
                 [
-                    InlineKeyboardButton("Yes, restart", callback_data="confirm_restart"),
+                    InlineKeyboardButton(
+                        "Yes, restart", callback_data="confirm_restart"
+                    ),
                     InlineKeyboardButton("Cancel", callback_data="cancel_restart"),
                 ]
             ]
@@ -517,6 +545,145 @@ class VoiceAgentBot:
             parts.append(f"Cleared {sticky_count} auto-approval(s).")
         parts.append("Fresh session started.")
         return " ".join(parts)
+
+    async def _handle_sessions(self, chat_id: int, update: Update) -> None:
+        """Handle sessions dialog request."""
+        await self._show_sessions_dialog(chat_id, update)
+
+    async def _show_sessions_dialog(self, chat_id: int, update: Update) -> None:
+        """Show the sessions dialog with interactive buttons."""
+        sessions = self.session_manager.list_sessions(chat_id)
+
+        if not sessions:
+            # No sessions yet, create main and show dialog
+            self.session_manager.get_or_create(chat_id)
+            sessions = self.session_manager.list_sessions(chat_id)
+
+        # Build session list
+        lines = ["📂 <b>Sessions</b>\n"]
+        for s in sessions:
+            check = " ✓" if s.is_active else ""
+            # Truncate cwd to last component for display
+            cwd_short = s.cwd.split("/")[-1] or s.cwd
+            lines.append(f"[{s.name}{check}] {s.message_count} msgs - {cwd_short}")
+
+        # Build keyboard
+        rows: list[list[InlineKeyboardButton]] = []
+
+        # Switch buttons row
+        switch_buttons = [
+            InlineKeyboardButton(
+                f"Switch: {s.name}" + (" ✓" if s.is_active else ""),
+                callback_data=f"session_switch_{s.name}",
+            )
+            for s in sessions
+        ]
+        # Chunk switch buttons into rows of 2
+        for i in range(0, len(switch_buttons), 2):
+            rows.append(switch_buttons[i : i + 2])
+
+        # New session button
+        rows.append(
+            [InlineKeyboardButton("+ New Session", callback_data="session_new")]
+        )
+
+        # Close buttons row
+        close_buttons = [
+            InlineKeyboardButton(
+                f"Close: {s.name}", callback_data=f"session_close_{s.name}"
+            )
+            for s in sessions
+        ]
+        # Chunk close buttons into rows of 2
+        for i in range(0, len(close_buttons), 2):
+            rows.append(close_buttons[i : i + 2])
+
+        keyboard = InlineKeyboardMarkup(rows)
+
+        await update.message.reply_text(  # type: ignore
+            "\n".join(lines), reply_markup=keyboard, parse_mode="HTML"
+        )
+
+    async def sessions_command(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Handle /sessions command.
+
+        Args:
+            update: Telegram update.
+            context: Callback context.
+        """
+        if not update.effective_chat:
+            return
+
+        chat_id = update.effective_chat.id
+        if not self.is_allowed(chat_id):
+            return
+
+        await self._handle_sessions(chat_id, update)
+
+    async def _handle_session_new_callback(self, chat_id: int, query: Any) -> None:
+        """Handle new session button click."""
+        name = self.session_manager.generate_session_name(chat_id)
+        self.session_manager.create_new(chat_id, name=name)
+        await query.edit_message_text(f"Created and switched to session '{name}'.")
+
+    async def _handle_session_switch_callback(
+        self, chat_id: int, name: str, query: Any
+    ) -> None:
+        """Handle session switch button click."""
+        session = self.session_manager.switch_session(chat_id, name)
+        if session:
+            await query.edit_message_text(f"Switched to session '{name}'.")
+        else:
+            await query.edit_message_text(f"Session '{name}' not found.")
+
+    async def _handle_session_close_callback(
+        self, chat_id: int, name: str, query: Any
+    ) -> None:
+        """Handle session close button click - show confirmation."""
+        sessions = self.session_manager.list_sessions(chat_id)
+        session_info = next((s for s in sessions if s.name == name), None)
+
+        if not session_info:
+            await query.edit_message_text(f"Session '{name}' not found.")
+            return
+
+        msg = f"Close session '{name}'?"
+        if session_info.message_count > 0:
+            msg += f"\n\nThis session has {session_info.message_count} message(s)."
+
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "Yes, close", callback_data=f"session_close_confirm_{name}"
+                    ),
+                    InlineKeyboardButton(
+                        "Cancel", callback_data=f"session_close_cancel_{name}"
+                    ),
+                ]
+            ]
+        )
+        await query.edit_message_text(msg, reply_markup=keyboard)
+
+    async def _handle_session_close_confirm_callback(
+        self, chat_id: int, name: str, query: Any
+    ) -> None:
+        """Handle session close confirmation."""
+        closed = await self.session_manager.close_session_async(chat_id, name)
+        if closed:
+            active = self.session_manager.get_active_session_name(chat_id)
+            if active:
+                await query.edit_message_text(
+                    f"Closed session '{name}'. Active session: '{active}'."
+                )
+            else:
+                await query.edit_message_text(
+                    f"Closed session '{name}'. No sessions remaining."
+                )
+        else:
+            await query.edit_message_text(f"Session '{name}' not found.")
 
     async def restart_command(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -658,6 +825,7 @@ class VoiceAgentBot:
         app.add_handler(CommandHandler("status", self.status_command))
         app.add_handler(CommandHandler("restart", self.restart_command))
         app.add_handler(CommandHandler("approvals", self.approvals_command))
+        app.add_handler(CommandHandler("sessions", self.sessions_command))
         app.add_handler(CallbackQueryHandler(self.handle_callback))
         app.add_handler(MessageHandler(filters.VOICE, self.handle_voice))
         app.add_handler(
