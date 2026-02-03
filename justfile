@@ -82,13 +82,30 @@ docker-load:
 
 # Run Docker container (requires .env file with TELEGRAM_BOT_TOKEN)
 docker-run:
+    @IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep voice-agent | head -1) && \
     docker run --rm -it \
         --env-file .env \
         -e WHISPER_URL=${WHISPER_URL:-http://host.docker.internal:8080/transcribe} \
-        ghcr.io/paolino/voice-agent:0.1.0
+        $$IMAGE
 
 # Build and run Docker container
 docker: docker-build docker-load docker-run
+
+# Deploy to plutimus.com - fetch from Cachix and reload
+deploy:
+    ssh plutimus.com 'cd ~/services/voice-agent && \
+        nix build github:paolino/voice-agent#docker-image && \
+        docker load < result && \
+        docker tag $$(docker images ghcr.io/paolino/voice-agent --format "{{.Repository}}:{{.Tag}}" | head -1) ghcr.io/paolino/voice-agent:latest && \
+        docker compose up -d'
+
+# Deploy branch/ref to plutimus.com (for testing)
+deploy-dev ref:
+    ssh plutimus.com 'cd ~/services/voice-agent && \
+        nix build github:paolino/voice-agent/{{ref}}#docker-image && \
+        docker load < result && \
+        docker tag $$(docker images ghcr.io/paolino/voice-agent --format "{{.Repository}}:{{.Tag}}" | head -1) ghcr.io/paolino/voice-agent:latest && \
+        docker compose up -d'
 
 # Clean build artifacts
 clean:
