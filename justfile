@@ -20,7 +20,7 @@ stop:
 restart: stop start
 
 # Start local testing - stop container, run from source with localhost whisper
-test-local:
+test-local clean="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd /code/infrastructure/compose/voice-agent
@@ -28,9 +28,13 @@ test-local:
     cd /code/voice-agent
     pkill -f '[v]oice-agent-wrapped' 2>/dev/null || true
     sleep 1
+    if [ "{{clean}}" = "clean" ]; then
+        rm -f ~/.config/voice-agent/data/sessions-local.json
+        echo "Cleaned local sessions"
+    fi
     set -a && source ~/.config/voice-agent/.env
     export WHISPER_URL=http://localhost:9003/transcribe
-    export SESSION_STORAGE_PATH=~/.config/voice-agent/data/sessions.json
+    export SESSION_STORAGE_PATH=~/.config/voice-agent/data/sessions-local.json
     nix run . > /tmp/voice-agent.log 2>&1 &
     sleep 4
     echo "Local testing started. Logs: /tmp/voice-agent.log"
