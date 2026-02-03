@@ -192,15 +192,19 @@ class VoiceAgentBot:
         # Transcribe
         try:
             text = await transcribe(bytes(audio_bytes), self.settings.whisper_url)
-            from html import escape
 
             # Delete the voice message to keep chat clean
             await update.message.delete()
 
-            tag = self._session_tag(chat_id)
-            await update.message.chat.send_message(
-                f"{tag} <i>{escape(text)}</i>", parse_mode="HTML"
-            )
+            # Echo transcription unless it's a skill invocation
+            stripped = text.strip()
+            if not stripped.startswith("/") and not stripped.lower().startswith("skill "):
+                from html import escape
+
+                tag = self._session_tag(chat_id)
+                await update.message.chat.send_message(
+                    f"{tag} <i>{escape(text)}</i>", parse_mode="HTML"
+                )
         except TranscriptionError as e:
             logger.error("Transcription failed: %s", e)
             await update.message.reply_text(f"Transcription failed: {e}")
@@ -798,6 +802,9 @@ class VoiceAgentBot:
         text = update.message.text
         if not text:
             return
+
+        # Delete the command message to keep chat clean
+        await update.message.delete()
 
         await self._handle_prompt(chat_id, text, update)
 

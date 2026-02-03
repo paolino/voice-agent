@@ -211,5 +211,13 @@ def parse_command(text: str, projects: dict[str, str] | None = None) -> ParsedCo
                             project=name,
                         )
 
+    # Check for skill invocation: "skill X" -> "/X"
+    if lower_text.startswith("skill "):
+        skill_name = lower_text[6:].strip()
+        if skill_name:
+            return ParsedCommand(
+                command_type=CommandType.PROMPT, text=f"/{skill_name}"
+            )
+
     # Default: treat as a prompt to send to Claude
     return ParsedCommand(command_type=CommandType.PROMPT, text=text)

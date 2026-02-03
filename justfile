@@ -1,5 +1,7 @@
 # Development commands for voice-agent
 
+infrastructure := "/code/infrastructure"
+
 # Run the bot (foreground)
 run:
     python -m voice_agent
@@ -23,9 +25,7 @@ restart: stop start
 test-local clean="":
     #!/usr/bin/env bash
     set -euo pipefail
-    cd /code/infrastructure/compose/voice-agent
-    docker compose --env-file ~/.config/voice-agent/.env stop voice-agent
-    cd /code/voice-agent
+    docker compose -f {{infrastructure}}/compose/voice-agent/docker-compose.yaml --env-file ~/.config/voice-agent/.env stop voice-agent
     pkill -f '[v]oice-agent-wrapped' 2>/dev/null || true
     sleep 1
     mkdir -p ~/.config/voice-agent/data
@@ -45,8 +45,7 @@ test-local-stop:
     #!/usr/bin/env bash
     set -euo pipefail
     pkill -f '[v]oice-agent-wrapped' 2>/dev/null || true
-    cd /code/infrastructure/compose/voice-agent
-    docker compose --env-file ~/.config/voice-agent/.env start voice-agent
+    docker compose -f {{infrastructure}}/compose/voice-agent/docker-compose.yaml --env-file ~/.config/voice-agent/.env start voice-agent
     echo "Container restarted"
 
 # Show bot logs
@@ -133,8 +132,7 @@ deploy-local:
     grep -q "^VOICE_AGENT_VERSION=" "$ENV_FILE" && \
         sed -i "s/^VOICE_AGENT_VERSION=.*/VOICE_AGENT_VERSION=$TAG/" "$ENV_FILE" || \
         echo "VOICE_AGENT_VERSION=$TAG" >> "$ENV_FILE"
-    cd /code/infrastructure/compose/voice-agent
-    docker compose --env-file "$ENV_FILE" up -d
+    docker compose -f {{infrastructure}}/compose/voice-agent/docker-compose.yaml --env-file "$ENV_FILE" up -d
     echo "Deployed $TAG locally"
 
 # Deploy to plutimus.com - fetch from Cachix and reload
