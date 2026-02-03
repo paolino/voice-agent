@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.3.0](https://github.com/paolino/voice-agent/compare/v0.2.0...v0.3.0) (2026-02-03)
+
+
+### Features
+
+* add deploy-local command for docker compose ([089a5db](https://github.com/paolino/voice-agent/commit/089a5db3b5acd7e58ec41d6a64a5d26dfefe681f))
+* add image-tag flake output for deployment ([2c63b60](https://github.com/paolino/voice-agent/commit/2c63b602bf03862c8b4aef2ea2ee2581a7f197d3))
+* add test-local commands for feature testing ([f1a28be](https://github.com/paolino/voice-agent/commit/f1a28be3fa8f75c5eb4502d8f9d0e375d3b65bbf))
+* separate local sessions with optional clean flag ([281a3e6](https://github.com/paolino/voice-agent/commit/281a3e67942d80057fe9c58d3cbe853ba6e6060e))
+* tag docker images with commit hash ([8666eb2](https://github.com/paolino/voice-agent/commit/8666eb2ba8ecb552495ce2561185e1ee3e3d17b4))
+* use Cachix for docker image distribution ([bf08776](https://github.com/paolino/voice-agent/commit/bf08776e5510e8a4db2b85500f86f8207b9a52ea))
+* use shared session storage for local testing ([bcace67](https://github.com/paolino/voice-agent/commit/bcace671818c8a1e19d1679e0fc57474886eebf7))
+
+
+### Bug Fixes
+
+* add workflow_dispatch to release workflow ([242cefa](https://github.com/paolino/voice-agent/commit/242cefaf82fa04cd67130a169a7f7b6230f57989))
+* create data directory before starting ([1937f58](https://github.com/paolino/voice-agent/commit/1937f58fd14a1d5faf7066f8d03612da9cd4ccbe))
+* deploy command escaping and missing env var ([9b6c439](https://github.com/paolino/voice-agent/commit/9b6c4392e78cef14d37142611b5aba866103a3d8))
+* use ~/.config/voice-agent/data for sessions ([718aba5](https://github.com/paolino/voice-agent/commit/718aba55468e99b9c11c626e29e0fb01fc1b6a82))
+* use consistent python version in docker image ([eebd27e](https://github.com/paolino/voice-agent/commit/eebd27e78fae9797386c599ed99478cb571fb449))
+
+
+### Documentation
+
+* add Docker deployment guide with Claude CLI mounting ([5e2b997](https://github.com/paolino/voice-agent/commit/5e2b9973650e20c825ed76411ca3579550f4d2d4))
+* update NixOS example with privileged mode and NIX_CONFIG ([3a7fba1](https://github.com/paolino/voice-agent/commit/3a7fba1bd54a6417e8e1556ba1b93e6ad7f5bbb8))
+
 ## [0.2.0](https://github.com/paolino/voice-agent/compare/v0.1.0...v0.2.0) (2026-02-02)
 
 
