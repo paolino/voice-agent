@@ -30,7 +30,7 @@ test-local:
     sleep 1
     set -a && source ~/.config/voice-agent/.env
     export WHISPER_URL=http://localhost:9003/transcribe
-    export SESSION_STORAGE_PATH=/code/infrastructure/compose/voice-agent/data/sessions.json
+    export SESSION_STORAGE_PATH=~/.config/voice-agent/data/sessions.json
     nix run . > /tmp/voice-agent.log 2>&1 &
     sleep 4
     echo "Local testing started. Logs: /tmp/voice-agent.log"
