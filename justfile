@@ -82,11 +82,12 @@ docker-load:
 
 # Run Docker container (requires .env file with TELEGRAM_BOT_TOKEN)
 docker-run:
-    @IMAGE=$(docker images --format '{{"{{"}}.Repository{{"}}"}}:{{"{{"}}.Tag{{"}}"}}' | grep voice-agent | head -1) && \
+    #!/usr/bin/env bash
+    IMAGE=$(docker images ghcr.io/paolino/voice-agent | awk 'NR==2 {print $1":"$2}')
     docker run --rm -it \
         --env-file .env \
         -e WHISPER_URL=${WHISPER_URL:-http://host.docker.internal:8080/transcribe} \
-        $$IMAGE
+        $IMAGE
 
 # Build and run Docker container
 docker: docker-build docker-load docker-run
@@ -97,9 +98,11 @@ deploy:
         TAG=`nix eval github:paolino/voice-agent#imageTag --raw --refresh` && \
         nix build github:paolino/voice-agent#docker-image --refresh && \
         docker load < result && \
-        sed -i "s/^VOICE_AGENT_VERSION=.*/VOICE_AGENT_VERSION=$$TAG/" .env && \
+        grep -q "^VOICE_AGENT_VERSION=" .env && \
+            sed -i "s/^VOICE_AGENT_VERSION=.*/VOICE_AGENT_VERSION=$TAG/" .env || \
+            echo "VOICE_AGENT_VERSION=$TAG" >> .env && \
         docker compose up -d && \
-        echo "Deployed $$TAG"'
+        echo "Deployed $TAG"'
 
 # Deploy branch/ref to plutimus.com (for testing)
 deploy-dev ref:
@@ -107,9 +110,11 @@ deploy-dev ref:
         TAG=`nix eval github:paolino/voice-agent/{{ref}}#imageTag --raw --refresh` && \
         nix build github:paolino/voice-agent/{{ref}}#docker-image --refresh && \
         docker load < result && \
-        sed -i "s/^VOICE_AGENT_VERSION=.*/VOICE_AGENT_VERSION=$$TAG/" .env && \
+        grep -q "^VOICE_AGENT_VERSION=" .env && \
+            sed -i "s/^VOICE_AGENT_VERSION=.*/VOICE_AGENT_VERSION=$TAG/" .env || \
+            echo "VOICE_AGENT_VERSION=$TAG" >> .env && \
         docker compose up -d && \
-        echo "Deployed $$TAG from {{ref}}"'
+        echo "Deployed $TAG from {{ref}}"'
 
 # Clean build artifacts
 clean:
