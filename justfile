@@ -19,6 +19,30 @@ stop:
 # Restart the bot
 restart: stop start
 
+# Start local testing - stop container, run from source with localhost whisper
+test-local:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd /code/infrastructure/compose/voice-agent
+    docker compose --env-file ~/.config/voice-agent/.env stop voice-agent
+    cd /code/voice-agent
+    pkill -f '[v]oice-agent-wrapped' 2>/dev/null || true
+    sleep 1
+    set -a && source ~/.config/voice-agent/.env
+    export WHISPER_URL=http://localhost:9003/transcribe
+    nix run . > /tmp/voice-agent.log 2>&1 &
+    sleep 4
+    echo "Local testing started. Logs: /tmp/voice-agent.log"
+
+# Stop local testing - stop local bot, restart container
+test-local-stop:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pkill -f '[v]oice-agent-wrapped' 2>/dev/null || true
+    cd /code/infrastructure/compose/voice-agent
+    docker compose --env-file ~/.config/voice-agent/.env start voice-agent
+    echo "Container restarted"
+
 # Show bot logs
 logs:
     @tail -50 /tmp/voice-agent.log | grep -v getUpdates
