@@ -92,6 +92,21 @@ docker-run:
 # Build and run Docker container
 docker: docker-build docker-load docker-run
 
+# Deploy locally - build, load, and restart compose stack
+deploy-local:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    nix build .#docker-image
+    docker load < result
+    TAG=$(nix eval .#imageTag --raw)
+    ENV_FILE=~/.config/voice-agent/.env
+    grep -q "^VOICE_AGENT_VERSION=" "$ENV_FILE" && \
+        sed -i "s/^VOICE_AGENT_VERSION=.*/VOICE_AGENT_VERSION=$TAG/" "$ENV_FILE" || \
+        echo "VOICE_AGENT_VERSION=$TAG" >> "$ENV_FILE"
+    cd /code/infrastructure/compose/voice-agent
+    docker compose --env-file "$ENV_FILE" up -d
+    echo "Deployed $TAG locally"
+
 # Deploy to plutimus.com - fetch from Cachix and reload
 deploy:
     ssh plutimus.com 'cd ~/services/voice-agent && \
