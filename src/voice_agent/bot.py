@@ -779,6 +779,28 @@ class VoiceAgentBot:
                 return self._SESSION_FRUITS[i % len(self._SESSION_FRUITS)]
         return self._SESSION_FRUITS[0]
 
+    async def unknown_command(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Forward unknown /commands to Claude as skill invocations.
+
+        Args:
+            update: Telegram update.
+            context: Callback context.
+        """
+        if not update.effective_chat or not update.message:
+            return
+
+        chat_id = update.effective_chat.id
+        if not self.is_allowed(chat_id):
+            return
+
+        text = update.message.text
+        if not text:
+            return
+
+        await self._handle_prompt(chat_id, text, update)
+
     async def _handle_prompt(self, chat_id: int, text: str, update: Update) -> None:
         """Handle a prompt to send to Claude."""
         tag = self._session_tag(chat_id)
@@ -885,6 +907,8 @@ class VoiceAgentBot:
         app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text)
         )
+        # Catch-all for unrecognized /commands - forward to Claude for skill invocation
+        app.add_handler(MessageHandler(filters.COMMAND, self.unknown_command))
 
         return app
 
