@@ -3,6 +3,11 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g., v0.2.0)"
+        required: true
 
 permissions:
   contents: write
@@ -11,6 +16,7 @@ permissions:
 
 jobs:
   release-please:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
@@ -23,10 +29,19 @@ jobs:
 
   publish-docker:
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created }}
+    if: ${{ always() && (needs.release-please.outputs.release_created || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ needs.release-please.outputs.tag_name }}" >> $GITHUB_OUTPUT
+          fi
 
       - uses: paolino/dev-assets/setup-nix@v0.0.1
         with:
@@ -45,7 +60,8 @@ jobs:
       - name: Load and push Docker image
         run: |
           docker load < result
-          docker tag ghcr.io/paolino/voice-agent:0.1.0 ghcr.io/paolino/voice-agent:${{ needs.release-please.outputs.tag_name }}
-          docker tag ghcr.io/paolino/voice-agent:0.1.0 ghcr.io/paolino/voice-agent:latest
-          docker push ghcr.io/paolino/voice-agent:${{ needs.release-please.outputs.tag_name }}
+          IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' | head -1)
+          docker tag $IMAGE ghcr.io/paolino/voice-agent:${{ steps.tag.outputs.tag }}
+          docker tag $IMAGE ghcr.io/paolino/voice-agent:latest
+          docker push ghcr.io/paolino/voice-agent:${{ steps.tag.outputs.tag }}
           docker push ghcr.io/paolino/voice-agent:latest
