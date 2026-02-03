@@ -119,6 +119,7 @@ services:
 
   voice-agent:
     image: ghcr.io/paolino/voice-agent:${VOICE_AGENT_VERSION:-latest}
+    privileged: true
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       WHISPER_URL: http://whisper:9003/transcribe
@@ -126,12 +127,14 @@ services:
       DEFAULT_CWD: /code
       HOME: /tmp
       PATH: /run/current-system/sw/bin:/usr/bin:/bin
+      NIX_CONFIG: "experimental-features = nix-command flakes"
     volumes:
       - ./data:/data                                      # Session storage
       - ${HOME}/.claude:/tmp/.claude                      # Claude settings
       - /code:/code                                       # Working directory
-      - /nix/store:/nix/store:ro                          # Nix store (dependencies)
+      - /nix:/nix                                         # Full nix directory
       - /run/current-system/sw/bin:/run/current-system/sw/bin:ro  # System binaries
+      - /etc/nix:/etc/nix:ro                              # Nix config
     depends_on:
       - whisper
     restart: unless-stopped
@@ -139,10 +142,12 @@ services:
 
 Key points for NixOS:
 
-- `/nix/store` contains Claude CLI and all its dependencies (node, bash, etc.)
+- `/nix` (full directory) shares the nix store and database with the host
 - `/run/current-system/sw/bin` contains the `claude` wrapper script
 - `HOME=/tmp` because `.claude` is mounted at `/tmp/.claude`
 - `.claude` must be read-write (Claude writes debug files, todos, etc.)
+- `privileged: true` required for nix operations inside container
+- `NIX_CONFIG` enables flakes for MCP servers that use `nix run`
 
 ### Configuration
 
