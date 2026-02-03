@@ -95,17 +95,19 @@ docker: docker-build docker-load docker-run
 deploy:
     ssh plutimus.com 'cd ~/services/voice-agent && \
         nix build github:paolino/voice-agent#docker-image && \
-        docker load < result && \
-        docker tag $$(docker images ghcr.io/paolino/voice-agent --format "{{.Repository}}:{{.Tag}}" | head -1) ghcr.io/paolino/voice-agent:latest && \
-        docker compose up -d'
+        TAG=$$(docker load < result 2>&1 | grep -oP "(?<=:)[^ ]+$$") && \
+        sed -i "s/^VOICE_AGENT_VERSION=.*/VOICE_AGENT_VERSION=$$TAG/" .env && \
+        docker compose up -d && \
+        echo "Deployed $$TAG"'
 
 # Deploy branch/ref to plutimus.com (for testing)
 deploy-dev ref:
     ssh plutimus.com 'cd ~/services/voice-agent && \
         nix build github:paolino/voice-agent/{{ref}}#docker-image && \
-        docker load < result && \
-        docker tag $$(docker images ghcr.io/paolino/voice-agent --format "{{.Repository}}:{{.Tag}}" | head -1) ghcr.io/paolino/voice-agent:latest && \
-        docker compose up -d'
+        TAG=$$(docker load < result 2>&1 | grep -oP "(?<=:)[^ ]+$$") && \
+        sed -i "s/^VOICE_AGENT_VERSION=.*/VOICE_AGENT_VERSION=$$TAG/" .env && \
+        docker compose up -d && \
+        echo "Deployed $$TAG from {{ref}}"'
 
 # Clean build artifacts
 clean:
