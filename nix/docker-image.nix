@@ -2,15 +2,16 @@
   pkgs,
   version,
   imageTag,
+  python,
   claudeAgentSdk,
 }:
 let
-  pythonEnv = pkgs.python3.withPackages (
-    ps: with ps; [
-      python-telegram-bot
-      httpx
-      pydantic
-      pydantic-settings
+  pythonEnv = python.withPackages (
+    ps: [
+      ps.python-telegram-bot
+      ps.httpx
+      ps.pydantic
+      ps.pydantic-settings
       claudeAgentSdk
     ]
   );
