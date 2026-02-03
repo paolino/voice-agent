@@ -28,6 +28,7 @@ test-local clean="":
     cd /code/voice-agent
     pkill -f '[v]oice-agent-wrapped' 2>/dev/null || true
     sleep 1
+    mkdir -p ~/.config/voice-agent/data
     if [ "{{clean}}" = "clean" ]; then
         rm -f ~/.config/voice-agent/data/sessions-local.json
         echo "Cleaned local sessions"
