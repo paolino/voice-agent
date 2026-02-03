@@ -3,65 +3,32 @@ name: Release
 on:
   push:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Tag to publish (e.g., v0.2.0)"
-        required: true
 
 permissions:
   contents: write
   pull-requests: write
-  packages: write
 
 jobs:
   release-please:
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
         with:
           release-type: python
 
-  publish-docker:
+  build-docker:
     needs: release-please
-    if: ${{ always() && (needs.release-please.outputs.release_created || github.event_name == 'workflow_dispatch') }}
+    if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Determine tag
-        id: tag
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${{ needs.release-please.outputs.tag_name }}" >> $GITHUB_OUTPUT
-          fi
 
       - uses: paolino/dev-assets/setup-nix@v0.0.1
         with:
           cachix-auth-token: "${{ secrets.CACHIX_AUTH_TOKEN }}"
 
-      - name: Build Docker image
-        run: nix build .#docker-image --quiet
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Load and push Docker image
-        run: |
-          docker load < result
-          IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' | head -1)
-          docker tag $IMAGE ghcr.io/paolino/voice-agent:${{ steps.tag.outputs.tag }}
-          docker tag $IMAGE ghcr.io/paolino/voice-agent:latest
-          docker push ghcr.io/paolino/voice-agent:${{ steps.tag.outputs.tag }}
-          docker push ghcr.io/paolino/voice-agent:latest
+      - name: Build Docker image (pushed to Cachix)
+        run: nix build .#docker-image
