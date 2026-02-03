@@ -54,7 +54,8 @@
         version = "0.1.0";
 
         # Docker image tag: short commit hash (with -dirty suffix if uncommitted changes)
-        imageTag = self.dirtyShortRev or "unknown";
+        # dirtyShortRev for local, shortRev for GitHub fetches
+        imageTag = self.dirtyShortRev or self.shortRev or "unknown";
 
         python = pkgs.python311;
 
@@ -276,6 +277,7 @@
           docs = docs;
         };
 
+
         devShells.default = devShell;
 
         apps = {
@@ -289,5 +291,10 @@
           };
         };
       }
-    );
+    )
+    // {
+      # Raw string for deployment scripts: nix eval .#imageTag --raw
+      # dirtyShortRev for local (includes -dirty suffix), shortRev for GitHub fetches
+      imageTag = self.dirtyShortRev or self.shortRev or "unknown";
+    };
 }
