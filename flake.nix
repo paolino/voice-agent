@@ -109,7 +109,7 @@
 
         # Docker image built with dockerTools (see nix/docker-image.nix)
         dockerImage = import ./nix/docker-image.nix {
-          inherit pkgs version imageTag claudeAgentSdk;
+          inherit pkgs version imageTag python claudeAgentSdk;
         };
 
         # =====================================================================
