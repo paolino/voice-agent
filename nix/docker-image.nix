@@ -1,6 +1,7 @@
 {
   pkgs,
   version,
+  imageTag,
   claudeAgentSdk,
 }:
 let
@@ -23,7 +24,7 @@ let
 in
 pkgs.dockerTools.buildImage {
   name = "ghcr.io/paolino/voice-agent";
-  tag = version;
+  tag = imageTag;
 
   copyToRoot = pkgs.buildEnv {
     name = "voice-agent-root";

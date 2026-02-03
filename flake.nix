@@ -53,6 +53,9 @@
 
         version = "0.1.0";
 
+        # Docker image tag: short commit hash (with -dirty suffix if uncommitted changes)
+        imageTag = self.dirtyShortRev or "unknown";
+
         python = pkgs.python311;
 
         # Override packages with flaky tests in CI
@@ -105,7 +108,7 @@
 
         # Docker image built with dockerTools (see nix/docker-image.nix)
         dockerImage = import ./nix/docker-image.nix {
-          inherit pkgs version claudeAgentSdk;
+          inherit pkgs version imageTag claudeAgentSdk;
         };
 
         # =====================================================================
