@@ -46,3 +46,4 @@ result-*
 # Session storage
 sessions.json
 *.db
+WIP.md
