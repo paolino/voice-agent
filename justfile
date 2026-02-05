@@ -44,8 +44,8 @@ test-local clean="":
 test-local-stop:
     #!/usr/bin/env bash
     set -euo pipefail
-    pkill -f '[v]oice-agent-wrapped' 2>/dev/null || true
-    docker compose -f {{infrastructure}}/compose/voice-agent/docker-compose.yaml --env-file ~/.config/voice-agent/.env start voice-agent
+    pkill -9 -f '[v]oice-agent-wrapped' 2>/dev/null || true
+    docker compose -f {{infrastructure}}/compose/voice-agent/docker-compose.yaml --env-file ~/.config/voice-agent/.env up -d --force-recreate voice-agent
     echo "Container restarted"
 
 # Show bot logs
@@ -55,6 +55,14 @@ logs:
 # Follow bot logs
 logs-follow:
     @tail -f /tmp/voice-agent.log | grep -v getUpdates
+
+# Show container logs
+logs-container:
+    docker logs voice-agent-voice-agent-1 --tail 50 2>&1 | grep -v getUpdates
+
+# Follow container logs
+logs-container-follow:
+    docker logs voice-agent-voice-agent-1 -f 2>&1 | grep -v getUpdates
 
 # Run all tests
 test:
@@ -125,15 +133,27 @@ docker: docker-build docker-load docker-run
 deploy-local:
     #!/usr/bin/env bash
     set -euo pipefail
-    nix build .#docker-image
+    # Kill any host processes to avoid telegram conflict
+    pkill -9 -f '[v]oice-agent-wrapped' 2>/dev/null || true
+    # Build with --rebuild to ensure nix store paths exist locally (not just in cachix)
+    nix build .#docker-image --rebuild
     docker load < result
     TAG=$(nix eval .#imageTag --raw)
     ENV_FILE=~/.config/voice-agent/.env
     grep -q "^VOICE_AGENT_VERSION=" "$ENV_FILE" && \
         sed -i "s/^VOICE_AGENT_VERSION=.*/VOICE_AGENT_VERSION=$TAG/" "$ENV_FILE" || \
         echo "VOICE_AGENT_VERSION=$TAG" >> "$ENV_FILE"
-    docker compose -f {{infrastructure}}/compose/voice-agent/docker-compose.yaml --env-file "$ENV_FILE" up -d
+    docker compose -f {{infrastructure}}/compose/voice-agent/docker-compose.yaml --env-file "$ENV_FILE" up -d --force-recreate voice-agent
     echo "Deployed $TAG locally"
+
+# Restart local container (no rebuild)
+restart-local:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Kill any host processes to avoid telegram conflict
+    pkill -9 -f '[v]oice-agent-wrapped' 2>/dev/null || true
+    docker compose -f {{infrastructure}}/compose/voice-agent/docker-compose.yaml --env-file ~/.config/voice-agent/.env up -d --force-recreate voice-agent
+    echo "Restarted voice-agent container"
 
 # Deploy to plutimus.com - fetch from Cachix and reload
 deploy:
