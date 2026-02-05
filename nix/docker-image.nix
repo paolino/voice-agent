@@ -32,6 +32,7 @@ pkgs.dockerTools.buildImage {
     paths = [
       pythonEnv
       pkgs.cacert
+      pkgs.bash
     ];
     pathsToLink = [
       "/bin"
@@ -52,6 +53,7 @@ pkgs.dockerTools.buildImage {
       "WHISPER_URL=http://localhost:8080/transcribe"
       "DEFAULT_CWD=/code"
       "PERMISSION_TIMEOUT=300"
+      "SHELL=/bin/bash"
     ];
     Labels = {
       "org.opencontainers.image.source" = "https://github.com/paolino/voice-agent";

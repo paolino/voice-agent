@@ -135,30 +135,6 @@ deploy-local:
     docker compose -f {{infrastructure}}/compose/voice-agent/docker-compose.yaml --env-file "$ENV_FILE" up -d
     echo "Deployed $TAG locally"
 
-# Deploy to plutimus.com - fetch from Cachix and reload
-deploy:
-    ssh plutimus.com 'cd ~/services/voice-agent && \
-        TAG=`nix eval github:paolino/voice-agent#imageTag --raw --refresh` && \
-        nix build github:paolino/voice-agent#docker-image --refresh && \
-        docker load < result && \
-        grep -q "^VOICE_AGENT_VERSION=" .env && \
-            sed -i "s/^VOICE_AGENT_VERSION=.*/VOICE_AGENT_VERSION=$TAG/" .env || \
-            echo "VOICE_AGENT_VERSION=$TAG" >> .env && \
-        docker compose up -d && \
-        echo "Deployed $TAG"'
-
-# Deploy branch/ref to plutimus.com (for testing)
-deploy-dev ref:
-    ssh plutimus.com 'cd ~/services/voice-agent && \
-        TAG=`nix eval github:paolino/voice-agent/{{ref}}#imageTag --raw --refresh` && \
-        nix build github:paolino/voice-agent/{{ref}}#docker-image --refresh && \
-        docker load < result && \
-        grep -q "^VOICE_AGENT_VERSION=" .env && \
-            sed -i "s/^VOICE_AGENT_VERSION=.*/VOICE_AGENT_VERSION=$TAG/" .env || \
-            echo "VOICE_AGENT_VERSION=$TAG" >> .env && \
-        docker compose up -d && \
-        echo "Deployed $TAG from {{ref}}"'
-
 # Clean build artifacts
 clean:
     rm -rf build/ dist/ *.egg-info .pytest_cache .mypy_cache .ruff_cache htmlcov/ site/
