@@ -41,7 +41,8 @@ pkgs.dockerTools.buildImage {
   };
 
   extraCommands = ''
-    mkdir -p app/voice_agent tmp
+    mkdir -p app/voice_agent tmp data
+    chmod 1777 tmp data
     cp -r ${../src/voice_agent}/* app/voice_agent/
   '';
 
