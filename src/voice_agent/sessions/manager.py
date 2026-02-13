@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from voice_agent.sessions.image import ImageAttachment
 from voice_agent.sessions.permissions import PermissionHandler
 
 if TYPE_CHECKING:
@@ -539,8 +540,45 @@ class SessionManager:
             except Exception as e:
                 logger.warning("Error terminating SDK client: %s", e)
 
+    def _build_multimodal_message(
+        self,
+        prompt: str,
+        images: list[ImageAttachment],
+    ) -> dict[str, Any]:
+        """Build a stream-json user message with image content blocks.
+
+        Args:
+            prompt: Text prompt to accompany the images.
+            images: Image attachments to include.
+
+        Returns:
+            A message dict suitable for ``client.query()``.
+        """
+        content: list[dict[str, Any]] = [
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": img.media_type,
+                    "data": img.data,
+                },
+            }
+            for img in images
+        ]
+        content.append({"type": "text", "text": prompt})
+        return {
+            "type": "user",
+            "message": {"role": "user", "content": content},
+            "parent_tool_use_id": None,
+            "session_id": "default",
+        }
+
     async def send_prompt(
-        self, chat_id: int, prompt: str, resume: bool = True
+        self,
+        chat_id: int,
+        prompt: str,
+        resume: bool = True,
+        images: list[ImageAttachment] | None = None,
     ) -> AsyncIterator[str]:
         """Send a prompt to the active session and stream responses.
 
@@ -550,6 +588,7 @@ class SessionManager:
             chat_id: Telegram chat ID.
             prompt: The prompt to send.
             resume: Whether to resume existing session if available.
+            images: Optional image attachments for multimodal prompts.
 
         Yields:
             Response chunks from Claude.
@@ -561,7 +600,16 @@ class SessionManager:
 
         try:
             client = await self._get_or_create_client(session)
-            await client.query(prompt)
+
+            if images:
+                user_msg = self._build_multimodal_message(prompt, images)
+
+                async def _single_message() -> AsyncIterator[dict[str, Any]]:
+                    yield user_msg
+
+                await client.query(_single_message())
+            else:
+                await client.query(prompt)
 
             async for msg in client.receive_response():
                 if isinstance(msg, AssistantMessage):

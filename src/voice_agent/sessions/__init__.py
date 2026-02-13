@@ -1,5 +1,6 @@
 """Session management for Claude Code SDK."""
 
+from voice_agent.sessions.image import ImageAttachment
 from voice_agent.sessions.manager import Session, SessionInfo, SessionManager
 from voice_agent.sessions.permissions import (
     PermissionHandler,
@@ -10,6 +11,7 @@ from voice_agent.sessions.storage import ChatStoredState, SessionStorage, Stored
 
 __all__ = [
     "ChatStoredState",
+    "ImageAttachment",
     "Session",
     "SessionInfo",
     "SessionManager",

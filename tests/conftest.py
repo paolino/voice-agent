@@ -74,6 +74,40 @@ def mock_whisper_response() -> dict[str, Any]:
     return {"text": "list files in current directory"}
 
 
+@pytest.fixture
+def mock_telegram_photo_update() -> MagicMock:
+    """Create a mock Telegram Update with photo message."""
+    update = MagicMock()
+    update.effective_chat.id = 123
+
+    # Simulate photo sizes (Telegram sends multiple resolutions)
+    small_photo = MagicMock()
+    small_photo.file_id = "small-photo-id"
+    large_photo = MagicMock()
+    large_photo.file_id = "large-photo-id"
+    update.message.photo = [small_photo, large_photo]
+
+    update.message.caption = "What is in this image?"
+    update.message.document = None
+    update.message.reply_text = AsyncMock()
+    return update
+
+
+@pytest.fixture
+def mock_telegram_photo_context() -> MagicMock:
+    """Create a mock Telegram context for photo downloads."""
+    context = MagicMock()
+    context.bot.get_file = AsyncMock()
+
+    mock_file = MagicMock()
+    mock_file.download_as_bytearray = AsyncMock(
+        return_value=bytearray(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
+    )
+    context.bot.get_file.return_value = mock_file
+
+    return context
+
+
 class MockClaudeSession:
     """Mock Claude SDK session for testing."""
 

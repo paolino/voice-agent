@@ -1,6 +1,7 @@
 """Integration tests for bot handlers."""
 
-from unittest.mock import AsyncMock, MagicMock
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -338,3 +339,114 @@ class TestVoiceAgentBot:
         await bot.restart_command(update, MagicMock())
 
         update.message.reply_text.assert_not_called()
+
+
+@pytest.mark.integration
+class TestPhotoHandler:
+    """Tests for photo/image message handling."""
+
+    async def test_handle_photo_basic(
+        self,
+        bot: VoiceAgentBot,
+        mock_telegram_photo_update: MagicMock,
+        mock_telegram_photo_context: MagicMock,
+    ) -> None:
+        """Test photo with caption sends image prompt."""
+
+        async def mock_send_prompt(
+            chat_id: int, prompt: str, **kwargs: object
+        ) -> None:
+            # Verify images were passed
+            images = kwargs.get("images")
+            assert images is not None
+            assert len(images) == 1
+            assert images[0].media_type == "image/jpeg"
+            assert len(images[0].data) > 0
+            yield "I see an image"  # type: ignore[misc]
+
+        with patch.object(bot.session_manager, "send_prompt", mock_send_prompt):
+            await bot.handle_photo(
+                mock_telegram_photo_update, mock_telegram_photo_context
+            )
+            await asyncio.sleep(0.05)
+
+        # Should have downloaded the largest photo
+        mock_telegram_photo_context.bot.get_file.assert_called_once_with(
+            "large-photo-id"
+        )
+
+    async def test_handle_photo_no_caption(
+        self,
+        bot: VoiceAgentBot,
+        mock_telegram_photo_context: MagicMock,
+    ) -> None:
+        """Test photo without caption uses default prompt."""
+        update = MagicMock()
+        update.effective_chat.id = 123
+        update.message.photo = [MagicMock(file_id="photo-id")]
+        update.message.caption = None
+        update.message.document = None
+        update.message.reply_text = AsyncMock()
+
+        captured_prompt = None
+
+        async def mock_send_prompt(
+            chat_id: int, prompt: str, **kwargs: object
+        ) -> None:
+            nonlocal captured_prompt
+            captured_prompt = prompt
+            yield "Description"  # type: ignore[misc]
+
+        with patch.object(bot.session_manager, "send_prompt", mock_send_prompt):
+            await bot.handle_photo(update, mock_telegram_photo_context)
+            await asyncio.sleep(0.05)
+
+        assert captured_prompt == "Describe this image and assist with any requests"
+
+    async def test_handle_photo_document(
+        self,
+        bot: VoiceAgentBot,
+        mock_telegram_photo_context: MagicMock,
+    ) -> None:
+        """Test image sent as document."""
+        update = MagicMock()
+        update.effective_chat.id = 123
+        update.message.photo = []
+        update.message.document.file_id = "doc-image-id"
+        update.message.document.mime_type = "image/png"
+        update.message.caption = "Check this screenshot"
+        update.message.reply_text = AsyncMock()
+
+        captured_media_type = None
+
+        async def mock_send_prompt(
+            chat_id: int, prompt: str, **kwargs: object
+        ) -> None:
+            nonlocal captured_media_type
+            images = kwargs.get("images")
+            if images:
+                captured_media_type = images[0].media_type
+            yield "Screenshot analysis"  # type: ignore[misc]
+
+        with patch.object(bot.session_manager, "send_prompt", mock_send_prompt):
+            await bot.handle_photo(update, mock_telegram_photo_context)
+            await asyncio.sleep(0.05)
+
+        mock_telegram_photo_context.bot.get_file.assert_called_once_with("doc-image-id")
+        assert captured_media_type == "image/png"
+
+    async def test_handle_photo_not_allowed(
+        self,
+        bot: VoiceAgentBot,
+        mock_telegram_photo_update: MagicMock,
+        mock_telegram_photo_context: MagicMock,
+    ) -> None:
+        """Test photo from non-allowed chat is rejected."""
+        mock_telegram_photo_update.effective_chat.id = 999
+
+        await bot.handle_photo(
+            mock_telegram_photo_update, mock_telegram_photo_context
+        )
+
+        mock_telegram_photo_context.bot.get_file.assert_not_called()
+        mock_telegram_photo_update.message.reply_text.assert_not_called()
