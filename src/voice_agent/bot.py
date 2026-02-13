@@ -846,6 +846,7 @@ class VoiceAgentBot:
             async with lock:
                 logger.info("Processing prompt for chat %s: %s", chat_id, text[:50])
                 self._cancel_flags[chat_id] = False
+                this_task = asyncio.current_task()
 
                 # Send "working" message with Stop button
                 stop_keyboard = InlineKeyboardMarkup(
@@ -878,13 +879,23 @@ class VoiceAgentBot:
                         )
                 except asyncio.CancelledError:
                     logger.info("Task cancelled for chat %s", chat_id)
+                    # Close SDK client to discard the interrupted response
+                    # stream — otherwise the next query reads stale data
+                    # from the old prompt
+                    with contextlib.suppress(Exception):
+                        session = self.session_manager.get(chat_id)
+                        if session:
+                            await self.session_manager._close_client(session)
                 except Exception as e:
                     logger.exception("Error in background prompt for chat %s", chat_id)
                     await update.message.reply_text(f"Error: {e}")  # type: ignore
                 finally:
                     was_cancelled = self._cancel_flags.get(chat_id, False)
-                    self._active_tasks.pop(chat_id, None)
-                    self._cancel_flags.pop(chat_id, None)
+                    # Only clean up tracking if we're still the registered
+                    # task — a new message may have replaced us already
+                    if self._active_tasks.get(chat_id) is this_task:
+                        self._active_tasks.pop(chat_id, None)
+                        self._cancel_flags.pop(chat_id, None)
                     # Update or remove the "Working..." message
                     with contextlib.suppress(Exception):
                         if was_cancelled:
