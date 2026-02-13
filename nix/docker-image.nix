@@ -20,7 +20,7 @@ let
     set -euo pipefail
     export HOME=/tmp
     export PYTHONPATH="/app:''${PYTHONPATH:-}"
-    exec python -m voice_agent
+    exec ${pythonEnv}/bin/python -m voice_agent
   '';
 in
 pkgs.dockerTools.buildImage {
