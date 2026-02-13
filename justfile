@@ -135,29 +135,33 @@ deploy-local:
     docker compose -f {{infrastructure}}/compose/voice-agent/docker-compose.yaml --env-file "$ENV_FILE" up -d
     echo "Deployed $TAG locally"
 
-# Deploy to plutimus.com - fetch from Cachix and reload
+# Deploy main from GitHub - fetch from Cachix, load, and restart
 deploy:
-    ssh plutimus.com 'cd ~/services/voice-agent && \
-        TAG=`nix eval github:paolino/voice-agent#imageTag --raw --refresh` && \
-        nix build github:paolino/voice-agent#docker-image --refresh && \
-        docker load < result && \
-        grep -q "^VOICE_AGENT_VERSION=" .env && \
-            sed -i "s/^VOICE_AGENT_VERSION=.*/VOICE_AGENT_VERSION=$TAG/" .env || \
-            echo "VOICE_AGENT_VERSION=$TAG" >> .env && \
-        docker compose up -d && \
-        echo "Deployed $TAG"'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    TAG=$(nix eval github:paolino/voice-agent#imageTag --raw --refresh)
+    nix build github:paolino/voice-agent#docker-image --refresh
+    docker load < result
+    ENV_FILE=~/.config/voice-agent/.env
+    grep -q "^VOICE_AGENT_VERSION=" "$ENV_FILE" && \
+        sed -i "s/^VOICE_AGENT_VERSION=.*/VOICE_AGENT_VERSION=$TAG/" "$ENV_FILE" || \
+        echo "VOICE_AGENT_VERSION=$TAG" >> "$ENV_FILE"
+    docker compose -f {{infrastructure}}/compose/voice-agent/docker-compose.yaml --env-file "$ENV_FILE" up -d
+    echo "Deployed $TAG"
 
-# Deploy branch/ref to plutimus.com (for testing)
+# Deploy branch/ref from GitHub (for testing)
 deploy-dev ref:
-    ssh plutimus.com 'cd ~/services/voice-agent && \
-        TAG=`nix eval github:paolino/voice-agent/{{ref}}#imageTag --raw --refresh` && \
-        nix build github:paolino/voice-agent/{{ref}}#docker-image --refresh && \
-        docker load < result && \
-        grep -q "^VOICE_AGENT_VERSION=" .env && \
-            sed -i "s/^VOICE_AGENT_VERSION=.*/VOICE_AGENT_VERSION=$TAG/" .env || \
-            echo "VOICE_AGENT_VERSION=$TAG" >> .env && \
-        docker compose up -d && \
-        echo "Deployed $TAG from {{ref}}"'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    TAG=$(nix eval github:paolino/voice-agent/{{ref}}#imageTag --raw --refresh)
+    nix build github:paolino/voice-agent/{{ref}}#docker-image --refresh
+    docker load < result
+    ENV_FILE=~/.config/voice-agent/.env
+    grep -q "^VOICE_AGENT_VERSION=" "$ENV_FILE" && \
+        sed -i "s/^VOICE_AGENT_VERSION=.*/VOICE_AGENT_VERSION=$TAG/" "$ENV_FILE" || \
+        echo "VOICE_AGENT_VERSION=$TAG" >> "$ENV_FILE"
+    docker compose -f {{infrastructure}}/compose/voice-agent/docker-compose.yaml --env-file "$ENV_FILE" up -d
+    echo "Deployed $TAG from {{ref}}"
 
 # Clean build artifacts
 clean:
