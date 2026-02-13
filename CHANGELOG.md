@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0](https://github.com/paolino/voice-agent/compare/v0.3.0...v0.4.0) (2026-02-13)
+
+
+### Features
+
+* add voice skill invocation and cleanup justfile ([141cb1c](https://github.com/paolino/voice-agent/commit/141cb1c8699cfbc75f552a4bf3af71f00da13295))
+* forward unknown /commands to Claude for skill invocation ([237e8e0](https://github.com/paolino/voice-agent/commit/237e8e0d9ca5b937b3a4bfb96d3374c8712be91a))
+* support image attachments in Telegram messages ([ac0ab99](https://github.com/paolino/voice-agent/commit/ac0ab99891de2f66fab207220e7f0a3d2a704e46)), closes [#40](https://github.com/paolino/voice-agent/issues/40)
+
+
+### Bug Fixes
+
+* deploy recipes to use local docker compose ([e9d80f6](https://github.com/paolino/voice-agent/commit/e9d80f6bcaea197d9907ccf6c50a43dbecef69fb))
+* prevent out-of-order responses after stop button ([4f142a3](https://github.com/paolino/voice-agent/commit/4f142a3b9f286dbd49447f9cff69cfd72f2a2f98)), closes [#70](https://github.com/paolino/voice-agent/issues/70)
+* use absolute python path in docker entrypoint ([34455f3](https://github.com/paolino/voice-agent/commit/34455f3b4d35296c1d72b2ad96634747b1a5ad97))
+
 ## [0.3.0](https://github.com/paolino/voice-agent/compare/v0.2.0...v0.3.0) (2026-02-03)
 
 
