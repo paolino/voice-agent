@@ -4,6 +4,7 @@ Handles voice messages and routes them to Claude sessions.
 """
 
 import asyncio
+import base64
 import contextlib
 import logging
 from typing import Any
@@ -20,7 +21,7 @@ from telegram.ext import (
 
 from voice_agent.config import Settings
 from voice_agent.router import CommandType, parse_command
-from voice_agent.sessions import SessionManager, SessionStorage
+from voice_agent.sessions import ImageAttachment, SessionManager, SessionStorage
 from voice_agent.telegram_format import convert_markdown_to_telegram
 from voice_agent.transcribe import TranscriptionError, transcribe
 
@@ -212,6 +213,62 @@ class VoiceAgentBot:
 
         # Route command
         await self._handle_transcription(chat_id, text, update)
+
+    async def handle_photo(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Handle incoming photo messages and image documents.
+
+        Args:
+            update: Telegram update.
+            context: Callback context.
+        """
+        if not update.effective_chat or not update.message:
+            return
+
+        chat_id = update.effective_chat.id
+        if not self.is_allowed(chat_id):
+            logger.debug("Ignoring photo from non-allowed chat %s", chat_id)
+            return
+
+        # Determine file_id and media_type
+        if update.message.photo:
+            # Photos: pick highest resolution (last in the list)
+            photo = update.message.photo[-1]
+            file_id = photo.file_id
+            media_type = "image/jpeg"
+        elif (
+            update.message.document
+            and update.message.document.mime_type
+            and update.message.document.mime_type.startswith("image/")
+        ):
+            file_id = update.message.document.file_id
+            media_type = update.message.document.mime_type
+        else:
+            return
+
+        # Download image
+        try:
+            file = await context.bot.get_file(file_id)
+            image_bytes = await file.download_as_bytearray()
+            logger.info(
+                "Downloaded %d bytes of image from chat %s",
+                len(image_bytes),
+                chat_id,
+            )
+        except Exception as e:
+            logger.error("Failed to download image: %s", e)
+            await update.message.reply_text(f"Failed to download image: {e}")
+            return
+
+        caption = (
+            update.message.caption
+            or "Describe this image and assist with any requests"
+        )
+        image_data = base64.b64encode(bytes(image_bytes)).decode("ascii")
+        image = ImageAttachment(data=image_data, media_type=media_type)
+
+        await self._handle_prompt_with_images(chat_id, caption, [image], update)
 
     async def _handle_transcription(
         self, chat_id: int, text: str, update: Update
@@ -810,6 +867,16 @@ class VoiceAgentBot:
 
     async def _handle_prompt(self, chat_id: int, text: str, update: Update) -> None:
         """Handle a prompt to send to Claude."""
+        await self._handle_prompt_with_images(chat_id, text, None, update)
+
+    async def _handle_prompt_with_images(
+        self,
+        chat_id: int,
+        text: str,
+        images: list[ImageAttachment] | None,
+        update: Update,
+    ) -> None:
+        """Handle a prompt with optional images to send to Claude."""
         tag = self._session_tag(chat_id)
 
         # Set up notification callback for this chat
@@ -858,7 +925,9 @@ class VoiceAgentBot:
 
                 response_buffer: list[str] = []
                 try:
-                    async for chunk in self.session_manager.send_prompt(chat_id, text):
+                    async for chunk in self.session_manager.send_prompt(
+                        chat_id, text, images=images
+                    ):
                         # Check if cancelled
                         if self._cancel_flags.get(chat_id, False):
                             logger.info("Task cancelled for chat %s", chat_id)
@@ -922,6 +991,8 @@ class VoiceAgentBot:
         app.add_handler(CommandHandler("sessions", self.sessions_command))
         app.add_handler(CallbackQueryHandler(self.handle_callback))
         app.add_handler(MessageHandler(filters.VOICE, self.handle_voice))
+        app.add_handler(MessageHandler(filters.PHOTO, self.handle_photo))
+        app.add_handler(MessageHandler(filters.Document.IMAGE, self.handle_photo))
         app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text)
         )

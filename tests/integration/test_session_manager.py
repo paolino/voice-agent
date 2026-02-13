@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from voice_agent.sessions import SessionManager
+from voice_agent.sessions import ImageAttachment, SessionManager
 
 
 @pytest.mark.integration
@@ -359,3 +359,104 @@ class TestPermissionCallbackWiring:
                                 mock_deny.assert_called_once_with(
                                     message="User rejected"
                                 )
+
+
+@pytest.mark.integration
+class TestSendPromptWithImage:
+    """Tests for send_prompt with image attachments."""
+
+    def test_build_multimodal_message(
+        self, session_manager: SessionManager
+    ) -> None:
+        """Test building a multimodal message with images."""
+        images = [
+            ImageAttachment(data="aGVsbG8=", media_type="image/jpeg"),
+        ]
+        msg = session_manager._build_multimodal_message("Describe this", images)
+
+        assert msg["type"] == "user"
+        content = msg["message"]["content"]
+        assert len(content) == 2
+
+        # First block is image
+        assert content[0]["type"] == "image"
+        assert content[0]["source"]["type"] == "base64"
+        assert content[0]["source"]["media_type"] == "image/jpeg"
+        assert content[0]["source"]["data"] == "aGVsbG8="
+
+        # Second block is text
+        assert content[1]["type"] == "text"
+        assert content[1]["text"] == "Describe this"
+
+    def test_build_multimodal_message_multiple_images(
+        self, session_manager: SessionManager
+    ) -> None:
+        """Test building a message with multiple images."""
+        images = [
+            ImageAttachment(data="img1data", media_type="image/jpeg"),
+            ImageAttachment(data="img2data", media_type="image/png"),
+        ]
+        msg = session_manager._build_multimodal_message("Compare these", images)
+
+        content = msg["message"]["content"]
+        assert len(content) == 3
+        assert content[0]["source"]["media_type"] == "image/jpeg"
+        assert content[1]["source"]["media_type"] == "image/png"
+        assert content[2]["text"] == "Compare these"
+
+    async def test_send_prompt_with_image(
+        self, session_manager: SessionManager
+    ) -> None:
+        """Test send_prompt passes images via AsyncIterable to client.query."""
+        session = session_manager.get_or_create(123)
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        # Capture what query receives
+        captured_query_arg = None
+
+        async def mock_query(prompt_arg):
+            nonlocal captured_query_arg
+            # If it's an async iterable, consume it
+            if hasattr(prompt_arg, "__aiter__"):
+                async for item in prompt_arg:
+                    captured_query_arg = item
+            else:
+                captured_query_arg = prompt_arg
+
+        mock_client.query = mock_query
+
+        # Mock receive_response to return empty
+        async def empty_response():
+            return
+            yield  # type: ignore[misc]
+
+        mock_client.receive_response = empty_response
+
+        with (
+            patch("shutil.which", return_value="/usr/bin/claude"),
+            patch("claude_agent_sdk.ClaudeAgentOptions", return_value=MagicMock()),
+            patch("claude_agent_sdk.ClaudeSDKClient", return_value=mock_client),
+            patch("claude_agent_sdk.AssistantMessage"),
+            patch("claude_agent_sdk.ResultMessage"),
+            patch("claude_agent_sdk.TextBlock"),
+        ):
+            await session_manager._get_or_create_client(session)
+
+            images = [
+                ImageAttachment(data="dGVzdA==", media_type="image/jpeg")
+            ]
+            async for _ in session_manager.send_prompt(
+                123, "What is this?", images=images
+            ):
+                pass
+
+        # Verify the query received a multimodal message
+        assert captured_query_arg is not None
+        assert captured_query_arg["type"] == "user"
+        content = captured_query_arg["message"]["content"]
+        assert content[0]["type"] == "image"
+        assert content[1]["type"] == "text"
+        assert content[1]["text"] == "What is this?"
