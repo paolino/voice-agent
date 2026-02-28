@@ -211,8 +211,9 @@ class VoiceAgentBot:
             await update.message.reply_text(f"Transcription failed: {e}")
             return
 
-        # Route command
-        await self._handle_transcription(chat_id, text, update)
+        # Voice transcriptions are always sent as prompts to Claude.
+        # Commands come from typed text, /commands, and buttons only.
+        await self._handle_prompt(chat_id, text, update)
 
     async def handle_photo(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
