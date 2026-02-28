@@ -86,12 +86,12 @@
         # =====================================================================
         claudeAgentSdk = pythonPackages.buildPythonPackage {
           pname = "claude-agent-sdk";
-          version = "0.1.27";
+          version = "0.1.44";
           format = "wheel";
 
           src = pkgs.fetchurl {
-            url = "https://files.pythonhosted.org/packages/84/06/886931dcbce8cd586aa38afa3ebdefe7d9eaa4ad389fa795560317c1f891/claude_agent_sdk-0.1.27-py3-none-manylinux_2_17_x86_64.whl";
-            sha256 = "0yw8bwph5pdk5kycwmdqciyqsyri1sz2i3i117wvvrwc83rj43ny";
+            url = "https://files.pythonhosted.org/packages/17/cb/67af9796dad77a94dfe851138f5ffc9e2e0a14407ba55fea07462c1cc8e5/claude_agent_sdk-0.1.44-py3-none-manylinux_2_17_x86_64.whl";
+            sha256 = "1f3hws4rh8mbirmj0r6ir9k52l5r4h5xqh3brjk17abi3x81ag45";
           };
 
           propagatedBuildInputs = [
