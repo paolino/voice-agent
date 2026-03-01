@@ -82,6 +82,15 @@ in
       description = "URL of the Whisper transcription service.";
     };
 
+    allowedChatIds = lib.mkOption {
+      type = lib.types.listOf lib.types.int;
+      default = [ ];
+      description = ''
+        List of Telegram chat IDs allowed to use the bot.
+        If empty, all chats are allowed (not recommended).
+      '';
+    };
+
     permissionTimeout = lib.mkOption {
       type = lib.types.int;
       default = 300;
@@ -135,6 +144,9 @@ in
           DEFAULT_CWD = cfg.workingDirectory;
           WHISPER_URL = cfg.whisperUrl;
           PERMISSION_TIMEOUT = toString cfg.permissionTimeout;
+        }
+        // lib.optionalAttrs (cfg.allowedChatIds != [ ]) {
+          ALLOWED_CHAT_IDS = lib.concatMapStringsSep "," toString cfg.allowedChatIds;
         }
         // cfg.extraEnvironment;
 
