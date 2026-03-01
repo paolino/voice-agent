@@ -296,5 +296,9 @@
       # Raw string for deployment scripts: nix eval .#imageTag --raw
       # dirtyShortRev for local (includes -dirty suffix), shortRev for GitHub fetches
       imageTag = self.dirtyShortRev or self.shortRev or "unknown";
+
+      # Optional NixOS module for systemd deployment.
+      # The application itself is pure Python -- this is just a deployment helper.
+      nixosModules.default = import ./nixos/module.nix;
     };
 }
