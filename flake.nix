@@ -280,6 +280,15 @@
 
         devShells.default = devShell;
 
+        # NixOS VM test: nix build .#checks.x86_64-linux.nixos-module
+        checks = pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+          nixos-module = import ./nixos/test.nix {
+            inherit pkgs;
+            voiceAgentModule = import ./nixos/module.nix;
+            voiceAgentPackage = voiceAgent;
+          };
+        };
+
         apps = {
           default = {
             type = "app";

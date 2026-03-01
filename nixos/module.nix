@@ -125,15 +125,9 @@ in
           "anthropic-api-key:${cfg.anthropicApiKeyFile}"
         ];
 
-        # Hardening
+        # Hardening (light: service needs broad host access for
+        # ~/.claude/ sessions, /code/ workdirs, and process inspection)
         NoNewPrivileges = true;
-        ProtectSystem = "strict";
-        ProtectHome = "no"; # Needs ~/.claude/ access
-        ReadWritePaths = [
-          cfg.workingDirectory
-          "/home/${cfg.user}/.claude"
-          "/tmp"
-        ];
       };
 
       environment =
