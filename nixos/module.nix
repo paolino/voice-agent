@@ -108,17 +108,21 @@ in
       description = "Timeout in seconds for permission requests.";
     };
 
+    includeSystemPath = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Include /run/current-system/sw/bin in the service PATH.
+        This gives Claude Code access to all system-wide tools
+        (nix, gh, just, jq, curl, etc.).
+      '';
+    };
+
     extraPackages = lib.mkOption {
       type = lib.types.listOf lib.types.package;
-      default = with pkgs; [
-        git
-        openssh
-        bash
-      ];
+      default = [ ];
       description = ''
-        Extra packages to add to the service PATH.
-        Defaults to git, openssh and bash which Claude Code
-        needs for repository operations.
+        Extra nix packages to add to the service PATH.
       '';
     };
 
@@ -178,6 +182,9 @@ in
           // cfg.extraEnvironment;
 
         script = ''
+          ${lib.optionalString cfg.includeSystemPath ''
+            export PATH="/run/current-system/sw/bin:$PATH"
+          ''}
           export TELEGRAM_BOT_TOKEN="$(cat $CREDENTIALS_DIRECTORY/telegram-bot-token)"
           ${lib.optionalString (cfg.anthropicApiKeyFile != null) ''
             export ANTHROPIC_API_KEY="$(cat $CREDENTIALS_DIRECTORY/anthropic-api-key)"
