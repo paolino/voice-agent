@@ -200,6 +200,23 @@ class TestParseCommand:
     @pytest.mark.parametrize(
         "text",
         [
+            "resume",
+            "Resume",
+            "resume session",
+            "Resume Session",
+            "pick up",
+            "riprendi",
+        ],
+    )
+    def test_resume_keywords(self, text: str) -> None:
+        """Test resume keyword detection."""
+        result = parse_command(text)
+        assert result.command_type == CommandType.RESUME
+        assert result.text == text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
             "sessions",
             "Sessions",
             "show sessions",
