@@ -12,7 +12,7 @@
 #     services.voice-agent = {
 #       enable = true;
 #       user = "paolino";
-#       telegramBotTokenFile = "/run/secrets/telegram-bot-token";
+#       telegramBotTokenFiles = [ "/run/secrets/telegram-bot-token" ];
 #       # anthropicApiKeyFile = "/run/secrets/anthropic-api-key";  # optional
 #       workingDirectory = "/code";
 #       whisperUrl = "http://localhost:9003/transcribe";
@@ -62,12 +62,12 @@ in
       description = "Group to run the service as.";
     };
 
-    telegramBotTokenFile = lib.mkOption {
-      type = lib.types.path;
+    telegramBotTokenFiles = lib.mkOption {
+      type = lib.types.listOf lib.types.path;
       description = ''
-        Path to a file containing the Telegram bot token.
-        The file should contain only the token, no newline.
-        Compatible with sops-nix and agenix.
+        List of bot token files. Each spawns a separate service
+        (voice-agent-0, voice-agent-1, …). Files should contain
+        only the token, no newline. Compatible with sops-nix and agenix.
       '';
     };
 
@@ -119,59 +119,57 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    systemd.services.voice-agent = {
-      description = "Voice Agent - Telegram bot for Claude Code";
-      after = [
-        "network-online.target"
-      ];
-      wants = [
-        "network-online.target"
-      ];
-      wantedBy = [
-        "multi-user.target"
-      ];
-
-      path = lib.optionals (cfg.claudePackage != null) [ cfg.claudePackage ];
-
-      serviceConfig = {
-        Type = "simple";
-        User = cfg.user;
-        Group = cfg.group;
-        WorkingDirectory = cfg.workingDirectory;
-        Restart = "on-failure";
-        RestartSec = 10;
-
-        # Load secrets from files at runtime
-        LoadCredential = [
-          "telegram-bot-token:${cfg.telegramBotTokenFile}"
-        ] ++ lib.optionals (cfg.anthropicApiKeyFile != null) [
-          "anthropic-api-key:${cfg.anthropicApiKeyFile}"
+    systemd.services = lib.listToAttrs (lib.imap0 (i: tokenFile:
+      lib.nameValuePair "voice-agent-${toString i}" {
+        description = "Voice Agent ${toString i} - Telegram bot for Claude Code";
+        after = [
+          "network-online.target"
+        ];
+        wants = [
+          "network-online.target"
+        ];
+        wantedBy = [
+          "multi-user.target"
         ];
 
-        # Hardening (light: service needs broad host access for
-        # ~/.claude/ sessions, /code/ workdirs, and process inspection)
-        NoNewPrivileges = true;
-      };
+        path = lib.optionals (cfg.claudePackage != null) [ cfg.claudePackage ];
 
-      environment =
-        {
-          DEFAULT_CWD = cfg.workingDirectory;
-          WHISPER_URL = cfg.whisperUrl;
-          PERMISSION_TIMEOUT = toString cfg.permissionTimeout;
-        }
-        // lib.optionalAttrs (cfg.allowedChatIds != [ ]) {
-          ALLOWED_CHAT_IDS = lib.concatMapStringsSep "," toString cfg.allowedChatIds;
-        }
-        // cfg.extraEnvironment;
+        serviceConfig = {
+          Type = "simple";
+          User = cfg.user;
+          Group = cfg.group;
+          WorkingDirectory = cfg.workingDirectory;
+          Restart = "on-failure";
+          RestartSec = 10;
 
-      # Read secrets from systemd credentials at startup
-      script = ''
-        export TELEGRAM_BOT_TOKEN="$(cat $CREDENTIALS_DIRECTORY/telegram-bot-token)"
-        ${lib.optionalString (cfg.anthropicApiKeyFile != null) ''
-          export ANTHROPIC_API_KEY="$(cat $CREDENTIALS_DIRECTORY/anthropic-api-key)"
-        ''}
-        exec ${cfg.package}/bin/voice-agent
-      '';
-    };
+          LoadCredential = [
+            "telegram-bot-token:${tokenFile}"
+          ] ++ lib.optionals (cfg.anthropicApiKeyFile != null) [
+            "anthropic-api-key:${cfg.anthropicApiKeyFile}"
+          ];
+
+          NoNewPrivileges = true;
+        };
+
+        environment =
+          {
+            DEFAULT_CWD = cfg.workingDirectory;
+            WHISPER_URL = cfg.whisperUrl;
+            PERMISSION_TIMEOUT = toString cfg.permissionTimeout;
+          }
+          // lib.optionalAttrs (cfg.allowedChatIds != [ ]) {
+            ALLOWED_CHAT_IDS = lib.concatMapStringsSep "," toString cfg.allowedChatIds;
+          }
+          // cfg.extraEnvironment;
+
+        script = ''
+          export TELEGRAM_BOT_TOKEN="$(cat $CREDENTIALS_DIRECTORY/telegram-bot-token)"
+          ${lib.optionalString (cfg.anthropicApiKeyFile != null) ''
+            export ANTHROPIC_API_KEY="$(cat $CREDENTIALS_DIRECTORY/anthropic-api-key)"
+          ''}
+          exec ${cfg.package}/bin/voice-agent
+        '';
+      }
+    ) cfg.telegramBotTokenFiles);
   };
 }
