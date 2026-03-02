@@ -505,6 +505,8 @@ class SessionManager:
                 cli_path=cli_path,
                 # Load user, project, and local settings (CLAUDE.md, MCP servers, etc.)
                 setting_sources=["user", "project", "local"],
+                # Resume prior conversation if we have a stored session ID
+                resume=session.claude_session_id,
             )
             session.sdk_client = ClaudeSDKClient(options=options)
             await session.sdk_client.__aenter__()
@@ -616,13 +618,22 @@ class SessionManager:
                     for block in msg.content:
                         if isinstance(block, TextBlock):
                             yield block.text
-                elif isinstance(msg, ResultMessage) and msg.total_cost_usd:
-                    logger.info(
-                        "Chat %s session %s cost: $%.4f",
-                        chat_id,
-                        session.name,
-                        msg.total_cost_usd,
-                    )
+                elif isinstance(msg, ResultMessage):
+                    if msg.session_id and msg.session_id != session.claude_session_id:
+                        session.claude_session_id = msg.session_id
+                        logger.info(
+                            "Chat %s session %s claude_session_id: %s",
+                            chat_id,
+                            session.name,
+                            msg.session_id,
+                        )
+                    if msg.total_cost_usd:
+                        logger.info(
+                            "Chat %s session %s cost: $%.4f",
+                            chat_id,
+                            session.name,
+                            msg.total_cost_usd,
+                        )
 
             # Persist updated session
             self._persist_session(session)
