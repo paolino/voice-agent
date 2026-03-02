@@ -13,7 +13,7 @@
 #       enable = true;
 #       user = "paolino";
 #       telegramBotTokenFile = "/run/secrets/telegram-bot-token";
-#       anthropicApiKeyFile = "/run/secrets/anthropic-api-key";
+#       # anthropicApiKeyFile = "/run/secrets/anthropic-api-key";  # optional
 #       workingDirectory = "/code";
 #       whisperUrl = "http://localhost:9003/transcribe";
 #     };
@@ -63,10 +63,12 @@ in
     };
 
     anthropicApiKeyFile = lib.mkOption {
-      type = lib.types.path;
+      type = lib.types.nullOr lib.types.path;
+      default = null;
       description = ''
         Path to a file containing the Anthropic API key.
         The file should contain only the key, no newline.
+        Optional — if null, ANTHROPIC_API_KEY is not set.
       '';
     };
 
@@ -131,6 +133,7 @@ in
         # Load secrets from files at runtime
         LoadCredential = [
           "telegram-bot-token:${cfg.telegramBotTokenFile}"
+        ] ++ lib.optionals (cfg.anthropicApiKeyFile != null) [
           "anthropic-api-key:${cfg.anthropicApiKeyFile}"
         ];
 
@@ -153,7 +156,9 @@ in
       # Read secrets from systemd credentials at startup
       script = ''
         export TELEGRAM_BOT_TOKEN="$(cat $CREDENTIALS_DIRECTORY/telegram-bot-token)"
-        export ANTHROPIC_API_KEY="$(cat $CREDENTIALS_DIRECTORY/anthropic-api-key)"
+        ${lib.optionalString (cfg.anthropicApiKeyFile != null) ''
+          export ANTHROPIC_API_KEY="$(cat $CREDENTIALS_DIRECTORY/anthropic-api-key)"
+        ''}
         exec ${cfg.package}/bin/voice-agent
       '';
     };
