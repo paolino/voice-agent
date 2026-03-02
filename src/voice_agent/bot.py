@@ -617,32 +617,28 @@ class VoiceAgentBot:
             await update.message.reply_text("No sessions found to resume.")  # type: ignore
             return
 
-        # Build picker with inline buttons
         import time
 
-        lines = ["<b>Pick a session to resume:</b>\n"]
         rows: list[list[InlineKeyboardButton]] = []
-        for i, (sid, last_msg, mtime) in enumerate(sessions):
+        for sid, last_msg, mtime in sessions:
             age_min = int((time.time() - mtime) / 60)
             if age_min < 60:
-                age = f"{age_min}m ago"
+                age = f"{age_min}m"
             elif age_min < 1440:
-                age = f"{age_min // 60}h ago"
+                age = f"{age_min // 60}h"
             else:
-                age = f"{age_min // 1440}d ago"
-            label = f"{i + 1}. {last_msg}"
-            lines.append(f"{i + 1}. ({age}) {last_msg}")
+                age = f"{age_min // 1440}d"
             rows.append(
                 [
                     InlineKeyboardButton(
-                        f"{i + 1}", callback_data=f"resume_{sid}"
+                        f"{age} · {last_msg}", callback_data=f"resume_{sid}"
                     )
                 ]
             )
 
         keyboard = InlineKeyboardMarkup(rows)
         await update.message.reply_text(  # type: ignore
-            "\n".join(lines), reply_markup=keyboard, parse_mode="HTML"
+            "Pick a session:", reply_markup=keyboard
         )
 
     async def _handle_resume_callback(
