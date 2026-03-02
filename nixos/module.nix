@@ -39,6 +39,15 @@ in
       '';
     };
 
+    claudePackage = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      description = ''
+        Claude Code CLI package. When set, the system CLI is used
+        instead of the outdated binary bundled in the SDK.
+      '';
+    };
+
     user = lib.mkOption {
       type = lib.types.str;
       description = ''
@@ -121,6 +130,8 @@ in
       wantedBy = [
         "multi-user.target"
       ];
+
+      path = lib.optionals (cfg.claudePackage != null) [ cfg.claudePackage ];
 
       serviceConfig = {
         Type = "simple";
