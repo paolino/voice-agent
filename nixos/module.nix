@@ -108,6 +108,20 @@ in
       description = "Timeout in seconds for permission requests.";
     };
 
+    extraPackages = lib.mkOption {
+      type = lib.types.listOf lib.types.package;
+      default = with pkgs; [
+        git
+        openssh
+        bash
+      ];
+      description = ''
+        Extra packages to add to the service PATH.
+        Defaults to git, openssh and bash which Claude Code
+        needs for repository operations.
+      '';
+    };
+
     extraEnvironment = lib.mkOption {
       type = lib.types.attrsOf lib.types.str;
       default = { };
@@ -132,7 +146,8 @@ in
           "multi-user.target"
         ];
 
-        path = lib.optionals (cfg.claudePackage != null) [ cfg.claudePackage ];
+        path = lib.optionals (cfg.claudePackage != null) [ cfg.claudePackage ]
+          ++ cfg.extraPackages;
 
         serviceConfig = {
           Type = "simple";
