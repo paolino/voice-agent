@@ -431,6 +431,12 @@ class VoiceAgentBot:
         if not chat_id or not self.is_allowed(chat_id):
             return
 
+        # Handle resume selection
+        if query.data.startswith("resume_"):
+            session_id = query.data[7:]
+            await self._handle_resume_callback(chat_id, session_id, query)
+            return
+
         # Handle session operations first (don't require existing session)
         if query.data == "session_new":
             await self._handle_session_new_callback(chat_id, query)
@@ -535,86 +541,125 @@ class VoiceAgentBot:
         else:
             await update.message.reply_text("No context to clear.")  # type: ignore
 
-    def _find_latest_session_id(self, cwd: str) -> tuple[str, str] | None:
-        """Find the most recent Claude session for a cwd.
+    @staticmethod
+    def _get_last_user_message(lines: list[str]) -> str:
+        """Extract last plain-text user message from JSONL lines."""
+        for line in reversed(lines):
+            try:
+                entry = json.loads(line)
+                if entry.get("type") == "user":
+                    content = entry.get("message", {}).get("content", "")
+                    if isinstance(content, str) and content.strip():
+                        return content.strip()[:60]
+            except (json.JSONDecodeError, AttributeError):
+                continue
+        return ""
 
-        Scans ~/.claude/projects/ for JSONL session files matching the cwd.
+    def _find_recent_sessions(
+        self, cwd: str, limit: int = 10
+    ) -> list[tuple[str, str, float]]:
+        """Find recent Claude sessions for a cwd.
 
         Args:
             cwd: Working directory to match.
+            limit: Max sessions to return.
 
         Returns:
-            Tuple of (session_id, last_user_message) or None.
+            List of (session_id, last_user_message, mtime) sorted newest first.
         """
+        import time
+
         projects_dir = Path.home() / ".claude" / "projects"
         if not projects_dir.exists():
-            return None
+            return []
 
-        # Find all JSONL files across all project dirs, sorted by mtime
         candidates: list[tuple[float, Path]] = []
         for jsonl in projects_dir.rglob("*.jsonl"):
             candidates.append((jsonl.stat().st_mtime, jsonl))
-
         candidates.sort(key=lambda x: x[0], reverse=True)
 
-        for _mtime, jsonl in candidates:
+        now = time.time()
+        results: list[tuple[str, str, float]] = []
+        for mtime, jsonl in candidates:
+            if len(results) >= limit:
+                break
+            # Skip very recently modified files (likely running sessions)
+            if now - mtime < 30:
+                continue
+            # Skip agent-spawned sessions
+            if jsonl.stem.startswith("agent-"):
+                continue
             try:
                 with open(jsonl) as f:
                     lines = f.readlines()
                 if len(lines) < 2:
                     continue
-                # Check cwd from first data line
                 meta = json.loads(lines[0])
                 file_cwd = meta.get("cwd") or json.loads(lines[1]).get("cwd")
                 if not file_cwd:
                     continue
-                # Normalize paths for comparison
                 if Path(file_cwd).resolve() != Path(cwd).resolve():
                     continue
-                # Get last user message
-                last_msg = ""
-                for line in reversed(lines):
-                    try:
-                        entry = json.loads(line)
-                        if entry.get("type") == "user":
-                            content = entry.get("message", {}).get("content", "")
-                            if isinstance(content, str) and content.strip():
-                                last_msg = content.strip()[:60]
-                                break
-                    except (json.JSONDecodeError, AttributeError):
-                        continue
-                session_id = jsonl.stem
-                return (session_id, last_msg)
+                last_msg = self._get_last_user_message(lines)
+                if not last_msg:
+                    continue
+                results.append((jsonl.stem, last_msg, mtime))
             except (json.JSONDecodeError, OSError):
                 continue
-        return None
+        return results
 
     async def _handle_resume(self, chat_id: int, update: Update) -> None:
-        """Handle resume request — pick up the most recent Claude session."""
+        """Handle resume request — show recent sessions to pick from."""
         session = self.session_manager.get_or_create(chat_id)
-        cwd = session.cwd
+        sessions = self._find_recent_sessions(session.cwd)
 
-        result = self._find_latest_session_id(cwd)
-        if not result:
-            await update.message.reply_text("No session found to resume.")  # type: ignore
+        if not sessions:
+            await update.message.reply_text("No sessions found to resume.")  # type: ignore
             return
 
-        session_id, last_msg = result
+        # Build picker with inline buttons
+        import time
 
-        # Skip if already on this session
-        if session.claude_session_id == session_id:
-            await update.message.reply_text(  # type: ignore
-                f"Already on this session: {last_msg or session_id[:8]}"
+        lines = ["<b>Pick a session to resume:</b>\n"]
+        rows: list[list[InlineKeyboardButton]] = []
+        for i, (sid, last_msg, mtime) in enumerate(sessions):
+            age_min = int((time.time() - mtime) / 60)
+            if age_min < 60:
+                age = f"{age_min}m ago"
+            elif age_min < 1440:
+                age = f"{age_min // 60}h ago"
+            else:
+                age = f"{age_min // 1440}d ago"
+            label = f"{i + 1}. {last_msg}"
+            lines.append(f"{i + 1}. ({age}) {last_msg}")
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        f"{i + 1}", callback_data=f"resume_{sid}"
+                    )
+                ]
             )
+
+        keyboard = InlineKeyboardMarkup(rows)
+        await update.message.reply_text(  # type: ignore
+            "\n".join(lines), reply_markup=keyboard, parse_mode="HTML"
+        )
+
+    async def _handle_resume_callback(
+        self, chat_id: int, session_id: str, query: Any
+    ) -> None:
+        """Handle resume button selection."""
+        session = self.session_manager.get_or_create(chat_id)
+
+        if session.claude_session_id == session_id:
+            await query.edit_message_text("Already on this session.")
             return
 
         session.claude_session_id = session_id
         self.session_manager._persist_session(session)
-        # Close existing SDK client so next prompt uses the new session_id
         await self.session_manager._close_client(session)
 
-        label = last_msg or session_id[:8]
-        await update.message.reply_text(f"Resumed: {label}")  # type: ignore
+        await query.edit_message_text(f"Resumed session {session_id[:8]}")
 
     async def _handle_switch_project(
         self, chat_id: int, project: str | None, update: Update
