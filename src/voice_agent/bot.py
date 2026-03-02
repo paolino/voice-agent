@@ -293,10 +293,8 @@ class VoiceAgentBot:
             await self._handle_clear_sticky(chat_id, update)
         elif command.command_type == CommandType.STATUS:
             await self._handle_status(chat_id, update)
-        elif command.command_type == CommandType.NEW_SESSION:
-            await self._handle_new_session(chat_id, update)
-        elif command.command_type == CommandType.CONTINUE_SESSION:
-            await self._handle_continue_session(chat_id, update)
+        elif command.command_type == CommandType.CLEAR:
+            await self._handle_clear(chat_id, update)
         elif command.command_type == CommandType.SWITCH_PROJECT:
             await self._handle_switch_project(chat_id, command.project, update)
         elif command.command_type == CommandType.CANCEL:
@@ -523,32 +521,15 @@ class VoiceAgentBot:
         else:
             await update.message.reply_text("No active session.")  # type: ignore
 
-    async def _handle_new_session(self, chat_id: int, update: Update) -> None:
-        """Handle new session request."""
-        self.session_manager.create_new(chat_id)
-        await update.message.reply_text("Started new session.")  # type: ignore
-
-    async def _handle_continue_session(self, chat_id: int, update: Update) -> None:
-        """Handle continue/resume session request."""
-        if self.session_manager.has_resumable_session(chat_id):
-            session = self.session_manager.get(chat_id)
-            await update.message.reply_text(  # type: ignore
-                f"Resuming session in {session.cwd}\n"  # type: ignore
-                f"Messages: {session.message_count}"  # type: ignore
-            )
+    async def _handle_clear(self, chat_id: int, update: Update) -> None:
+        """Handle clear context request — wipe claude_session_id."""
+        session = self.session_manager.get(chat_id)
+        if session and session.claude_session_id:
+            session.claude_session_id = None
+            self.session_manager._persist_session(session)
+            await update.message.reply_text("Context cleared. Next message starts fresh.")  # type: ignore
         else:
-            # No resumable session, check if there's stored session data
-            session = self.session_manager.get(chat_id)
-            if session:
-                await update.message.reply_text(  # type: ignore
-                    f"Session active in {session.cwd}. No Claude session to resume.\n"
-                    "Send a message to start interacting."
-                )
-            else:
-                await update.message.reply_text(  # type: ignore
-                    "No previous session to resume. Starting fresh."
-                )
-                self.session_manager.create_new(chat_id)
+            await update.message.reply_text("No context to clear.")  # type: ignore
 
     async def _handle_switch_project(
         self, chat_id: int, project: str | None, update: Update
@@ -615,20 +596,29 @@ class VoiceAgentBot:
             self._active_tasks.pop(chat_id, None)
             self._cancel_flags.pop(chat_id, None)
 
-        # Clear sticky approvals from existing session
+        # Preserve claude_session_id across restart
         session = self.session_manager.get(chat_id)
+        saved_session_id = session.claude_session_id if session else None
         sticky_count = 0
         if session:
             sticky_count = session.permission_handler.clear_sticky_approvals()
 
-        # Create fresh session (use async to properly close SDK client)
+        # Close SDK client and create fresh session
         await self.session_manager.create_new_async(chat_id)
+
+        # Restore claude_session_id so next message resumes context
+        if saved_session_id:
+            new_session = self.session_manager.get(chat_id)
+            if new_session:
+                new_session.claude_session_id = saved_session_id
+                self.session_manager._persist_session(new_session)
 
         # Build status message
         parts = ["🔄 Restarted."]
         if sticky_count > 0:
             parts.append(f"Cleared {sticky_count} auto-approval(s).")
-        parts.append("Fresh session started.")
+        if saved_session_id:
+            parts.append("Context preserved.")
         return " ".join(parts)
 
     async def _handle_sessions(self, chat_id: int, update: Update) -> None:
