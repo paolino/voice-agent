@@ -6,7 +6,9 @@ Handles voice messages and routes them to Claude sessions.
 import asyncio
 import base64
 import contextlib
+import json
 import logging
+from pathlib import Path
 from typing import Any
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -90,9 +92,9 @@ class VoiceAgentBot:
             "Commands:\n"
             "- 'status' to check session state\n"
             "- 'sessions' to manage multiple sessions\n"
-            "- 'new session' to start fresh\n"
-            "- 'continue' to resume previous session\n"
-            "- 'restart' to clear everything and start fresh\n"
+            "- 'resume' to pick up the last SSH session\n"
+            "- 'restart' to reset (keeps context)\n"
+            "- 'clear' to wipe context\n"
             "- 'yes/approve' or 'no/reject' for permission prompts\n"
             "- 'always approve' to sticky-approve similar tool calls\n"
             "- 'clear sticky' to reset sticky approvals\n"
@@ -303,6 +305,8 @@ class VoiceAgentBot:
             await self._handle_list_approvals(chat_id, update)
         elif command.command_type == CommandType.RESTART:
             await self._handle_restart(chat_id, update)
+        elif command.command_type == CommandType.RESUME:
+            await self._handle_resume(chat_id, update)
         elif command.command_type == CommandType.SESSIONS:
             await self._handle_sessions(chat_id, update)
         else:
@@ -530,6 +534,87 @@ class VoiceAgentBot:
             await update.message.reply_text("Context cleared. Next message starts fresh.")  # type: ignore
         else:
             await update.message.reply_text("No context to clear.")  # type: ignore
+
+    def _find_latest_session_id(self, cwd: str) -> tuple[str, str] | None:
+        """Find the most recent Claude session for a cwd.
+
+        Scans ~/.claude/projects/ for JSONL session files matching the cwd.
+
+        Args:
+            cwd: Working directory to match.
+
+        Returns:
+            Tuple of (session_id, last_user_message) or None.
+        """
+        projects_dir = Path.home() / ".claude" / "projects"
+        if not projects_dir.exists():
+            return None
+
+        # Find all JSONL files across all project dirs, sorted by mtime
+        candidates: list[tuple[float, Path]] = []
+        for jsonl in projects_dir.rglob("*.jsonl"):
+            candidates.append((jsonl.stat().st_mtime, jsonl))
+
+        candidates.sort(key=lambda x: x[0], reverse=True)
+
+        for _mtime, jsonl in candidates:
+            try:
+                with open(jsonl) as f:
+                    lines = f.readlines()
+                if len(lines) < 2:
+                    continue
+                # Check cwd from first data line
+                meta = json.loads(lines[0])
+                file_cwd = meta.get("cwd") or json.loads(lines[1]).get("cwd")
+                if not file_cwd:
+                    continue
+                # Normalize paths for comparison
+                if Path(file_cwd).resolve() != Path(cwd).resolve():
+                    continue
+                # Get last user message
+                last_msg = ""
+                for line in reversed(lines):
+                    try:
+                        entry = json.loads(line)
+                        if entry.get("type") == "user":
+                            content = entry.get("message", {}).get("content", "")
+                            if isinstance(content, str) and content.strip():
+                                last_msg = content.strip()[:60]
+                                break
+                    except (json.JSONDecodeError, AttributeError):
+                        continue
+                session_id = jsonl.stem
+                return (session_id, last_msg)
+            except (json.JSONDecodeError, OSError):
+                continue
+        return None
+
+    async def _handle_resume(self, chat_id: int, update: Update) -> None:
+        """Handle resume request — pick up the most recent Claude session."""
+        session = self.session_manager.get_or_create(chat_id)
+        cwd = session.cwd
+
+        result = self._find_latest_session_id(cwd)
+        if not result:
+            await update.message.reply_text("No session found to resume.")  # type: ignore
+            return
+
+        session_id, last_msg = result
+
+        # Skip if already on this session
+        if session.claude_session_id == session_id:
+            await update.message.reply_text(  # type: ignore
+                f"Already on this session: {last_msg or session_id[:8]}"
+            )
+            return
+
+        session.claude_session_id = session_id
+        self.session_manager._persist_session(session)
+        # Close existing SDK client so next prompt uses the new session_id
+        await self.session_manager._close_client(session)
+
+        label = last_msg or session_id[:8]
+        await update.message.reply_text(f"Resumed: {label}")  # type: ignore
 
     async def _handle_switch_project(
         self, chat_id: int, project: str | None, update: Update
