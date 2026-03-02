@@ -5,6 +5,7 @@ Manages Claude SDK client instances and their lifecycle.
 
 import asyncio
 import logging
+import os
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -499,12 +500,18 @@ class SessionManager:
                     return PermissionResultAllow()
                 return PermissionResultDeny(message=deny_message or "Permission denied")
 
+            # Pass through SSH_AUTH_SOCK so Claude can use the SSH agent
+            env = {}
+            if ssh_sock := os.environ.get("SSH_AUTH_SOCK"):
+                env["SSH_AUTH_SOCK"] = ssh_sock
+
             options = ClaudeAgentOptions(
                 cwd=session.cwd,
                 can_use_tool=permission_callback,
                 cli_path=cli_path,
                 # Load user, project, and local settings (CLAUDE.md, MCP servers, etc.)
                 setting_sources=["user", "project", "local"],
+                env=env,
             )
             session.sdk_client = ClaudeSDKClient(options=options)
             await session.sdk_client.__aenter__()
