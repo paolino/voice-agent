@@ -40,28 +40,12 @@ class TestParseCommand:
 
     @pytest.mark.parametrize(
         "text",
-        ["new session", "New Session", "fresh session", "start over", "reset"],
+        ["clear", "Clear", "clear context", "clear session"],
     )
-    def test_new_session_keywords(self, text: str) -> None:
-        """Test new session keyword detection."""
+    def test_clear_keywords(self, text: str) -> None:
+        """Test clear context keyword detection."""
         result = parse_command(text)
-        assert result.command_type == CommandType.NEW_SESSION
-
-    @pytest.mark.parametrize(
-        "text",
-        [
-            "continue",
-            "Continue",
-            "resume",
-            "Resume",
-            "continue session",
-            "resume session",
-        ],
-    )
-    def test_continue_session_keywords(self, text: str) -> None:
-        """Test continue session keyword detection."""
-        result = parse_command(text)
-        assert result.command_type == CommandType.CONTINUE_SESSION
+        assert result.command_type == CommandType.CLEAR
 
     def test_switch_project_work_on(self) -> None:
         """Test 'work on PROJECT' format."""

@@ -16,8 +16,7 @@ class CommandType(Enum):
     CLEAR_STICKY = auto()
     LIST_APPROVALS = auto()
     STATUS = auto()
-    NEW_SESSION = auto()
-    CONTINUE_SESSION = auto()
+    CLEAR = auto()
     SWITCH_PROJECT = auto()
     CANCEL = auto()
     RESTART = auto()
@@ -48,16 +47,11 @@ REJECT_KEYWORDS = frozenset(
     {"no", "reject", "rejected", "stop", "deny", "denied", "cancel", "nope"}
 )
 STATUS_KEYWORDS = frozenset({"status", "what's happening", "progress", "state"})
-NEW_SESSION_KEYWORDS = frozenset(
-    {"new session", "fresh session", "start over", "reset"}
-)
-CONTINUE_SESSION_KEYWORDS = frozenset(
+CLEAR_KEYWORDS = frozenset(
     {
-        "continue",
-        "resume",
-        "continue session",
-        "resume session",
-        "pick up where we left off",
+        "clear",
+        "clear context",
+        "clear session",
     }
 )
 STICKY_APPROVE_KEYWORDS = frozenset(
@@ -140,15 +134,9 @@ def parse_command(text: str, projects: dict[str, str] | None = None) -> ParsedCo
         if keyword in lower_text:
             return ParsedCommand(command_type=CommandType.STATUS, text=text)
 
-    # Check for new session keywords
-    for keyword in NEW_SESSION_KEYWORDS:
-        if keyword in lower_text:
-            return ParsedCommand(command_type=CommandType.NEW_SESSION, text=text)
-
-    # Check for continue session keywords
-    for keyword in CONTINUE_SESSION_KEYWORDS:
-        if keyword in lower_text:
-            return ParsedCommand(command_type=CommandType.CONTINUE_SESSION, text=text)
+    # Check for clear context keywords (exact match)
+    if lower_text in CLEAR_KEYWORDS:
+        return ParsedCommand(command_type=CommandType.CLEAR, text=text)
 
     # Check for sticky approve keywords
     for keyword in STICKY_APPROVE_KEYWORDS:
