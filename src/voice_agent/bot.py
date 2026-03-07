@@ -201,7 +201,8 @@ class VoiceAgentBot:
 
             # Echo transcription unless it's a skill invocation
             stripped = text.strip()
-            if not stripped.startswith("/") and not stripped.lower().startswith("skill "):
+            is_skill = stripped.lower().startswith("skill ")
+            if not stripped.startswith("/") and not is_skill:
                 from html import escape
 
                 tag = self._session_tag(chat_id)
@@ -537,7 +538,9 @@ class VoiceAgentBot:
         if session and session.claude_session_id:
             session.claude_session_id = None
             self.session_manager._persist_session(session)
-            await update.message.reply_text("Context cleared. Next message starts fresh.")  # type: ignore
+            await update.message.reply_text(  # type: ignore
+                "Context cleared. Next message starts fresh."
+            )
         else:
             await update.message.reply_text("No context to clear.")  # type: ignore
 
@@ -767,7 +770,10 @@ class VoiceAgentBot:
             fruit = fruits[i % len(fruits)]
             active = " ←" if s.is_active else ""
             cwd_short = s.cwd.split("/")[-1] or s.cwd
-            lines.append(f"{fruit} {s.name}{active} · {s.message_count} msgs · {cwd_short}")
+            lines.append(
+                f"{fruit} {s.name}{active}"
+                f" · {s.message_count} msgs · {cwd_short}"
+            )
 
         # Build keyboard
         rows: list[list[InlineKeyboardButton]] = []
