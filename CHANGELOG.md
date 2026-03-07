@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.4.0](https://github.com/paolino/voice-agent/compare/v0.3.0...v0.4.0) (2026-03-07)
+
+
+### Features
+
+* add allowedChatIds option to NixOS module ([5ef557f](https://github.com/paolino/voice-agent/commit/5ef557f55170a31bf1524ba33da231f5002baeb8))
+* add claudePackage option to use system Claude CLI ([b8ecb8c](https://github.com/paolino/voice-agent/commit/b8ecb8c82569722849810d825279774c1245bdf8))
+* add NixOS VM test for module ([eba6467](https://github.com/paolino/voice-agent/commit/eba646742f43d67bcc4579968b965cc2c81f2614))
+* add optional NixOS module for systemd deployment ([a4ddac8](https://github.com/paolino/voice-agent/commit/a4ddac8c765a0a071a5775bfa8a2ef3aa0678d28))
+* add resume command to pick up last SSH session ([44718d8](https://github.com/paolino/voice-agent/commit/44718d884f6ad973086e0d4aafdd37633ce24255))
+* add voice skill invocation and cleanup justfile ([141cb1c](https://github.com/paolino/voice-agent/commit/141cb1c8699cfbc75f552a4bf3af71f00da13295))
+* forward unknown /commands to Claude for skill invocation ([237e8e0](https://github.com/paolino/voice-agent/commit/237e8e0d9ca5b937b3a4bfb96d3374c8712be91a))
+* resume Claude sessions after process restart ([115c8b7](https://github.com/paolino/voice-agent/commit/115c8b703c55aeab1181815eeed53f907592a497)), closes [#82](https://github.com/paolino/voice-agent/issues/82)
+* support image attachments in Telegram messages ([ac0ab99](https://github.com/paolino/voice-agent/commit/ac0ab99891de2f66fab207220e7f0a3d2a704e46)), closes [#40](https://github.com/paolino/voice-agent/issues/40)
+* support multiple bot instances via telegramBotTokenFiles ([f4f60df](https://github.com/paolino/voice-agent/commit/f4f60df845db6278f9a043078a85d937af0a4c71))
+
+
+### Bug Fixes
+
+* add git, openssh, bash to NixOS service PATH ([61215d7](https://github.com/paolino/voice-agent/commit/61215d7b2ee6fc87a6d0bc0dc8cd42810e9b6488))
+* deploy recipes to use local docker compose ([e9d80f6](https://github.com/paolino/voice-agent/commit/e9d80f6bcaea197d9907ccf6c50a43dbecef69fb))
+* include NixOS system PATH for full tool access ([ac6f12e](https://github.com/paolino/voice-agent/commit/ac6f12ef36961dd0e34d2fd6a992c0bcf5da403b))
+* make anthropicApiKeyFile optional in NixOS module ([85ce79f](https://github.com/paolino/voice-agent/commit/85ce79fba1cb68737e3324330a79d7706f63fb89))
+* prevent out-of-order responses after stop button ([4f142a3](https://github.com/paolino/voice-agent/commit/4f142a3b9f286dbd49447f9cff69cfd72f2a2f98)), closes [#70](https://github.com/paolino/voice-agent/issues/70)
+* resolve pre-existing lint line-length violations in bot.py ([8474c16](https://github.com/paolino/voice-agent/commit/8474c16e1104a91e189eab5b448b53f61ff76a14))
+* resume buttons are selectable session labels ([5e09d8d](https://github.com/paolino/voice-agent/commit/5e09d8da3fcf000532827153b481990123867dd3))
+* resume shows picker, skips running sessions ([3587ade](https://github.com/paolino/voice-agent/commit/3587ade00155f50ad894a3ca80b9bba81262af5a))
+* send responses directly to chat instead of replying to trigger message ([3470aa5](https://github.com/paolino/voice-agent/commit/3470aa552beb39ee48b20a3576cb8fd29a4c20a6)), closes [#94](https://github.com/paolino/voice-agent/issues/94)
+* stop parsing voice transcriptions as commands ([3b64c16](https://github.com/paolino/voice-agent/commit/3b64c169e4ebf605c1641aae63eae4ae4d77b2d5))
+* update claude-agent-sdk to 0.1.44 ([42cc427](https://github.com/paolino/voice-agent/commit/42cc4274324abbd4db0fbb0f3a8c848579f87721))
+* use absolute python path in docker entrypoint ([34455f3](https://github.com/paolino/voice-agent/commit/34455f3b4d35296c1d72b2ad96634747b1a5ad97))
+
 ## [0.3.0](https://github.com/paolino/voice-agent/compare/v0.2.0...v0.3.0) (2026-02-03)
 
 
