@@ -922,29 +922,42 @@ class VoiceAgentBot:
         return self._prompt_locks[chat_id]
 
     async def _send_formatted(
-        self, update: Update, text: str, chat_id: int | None = None
+        self,
+        update: Update,
+        text: str,
+        chat_id: int | None = None,
     ) -> None:
         """Send a message with Telegram MarkdownV2 formatting.
+
+        Sends directly to the chat rather than replying to the
+        triggering message.  This avoids stale-reply ordering when
+        messages are queued behind a lock.
 
         Falls back to plain text if formatting fails.
 
         Args:
-            update: Telegram update for replying.
+            update: Telegram update (used for bot reference).
             text: Text to send (may contain Markdown).
             chat_id: Optional chat ID for session tag.
         """
+        target_chat_id = chat_id or (
+            update.effective_chat.id if update.effective_chat else None
+        )
+        if not target_chat_id:
+            return
         if chat_id:
             tag = self._session_tag(chat_id)
             text = f"{tag} {text}"
+        bot = update.get_bot()
         try:
             formatted = convert_markdown_to_telegram(text)
-            await update.message.reply_text(  # type: ignore
-                formatted, parse_mode="MarkdownV2"
+            await bot.send_message(
+                target_chat_id, formatted, parse_mode="MarkdownV2"
             )
         except Exception as e:
             # Fall back to plain text if formatting fails
             logger.debug("Markdown formatting failed, falling back to plain: %s", e)
-            await update.message.reply_text(text)  # type: ignore
+            await bot.send_message(target_chat_id, text)
 
     _SESSION_FRUITS = ["🍎", "🍊", "🍋", "🍇", "🍉", "🍓", "🍑", "🍒", "🥝", "🍍"]
 
@@ -1014,19 +1027,22 @@ class VoiceAgentBot:
                     ]
                 ]
             )
-            await update.message.reply_text(desc, reply_markup=keyboard)  # type: ignore
+            await update.get_bot().send_message(
+                chat_id, desc, reply_markup=keyboard
+            )
 
         self.session_manager.set_notify_callback(chat_id, notify_permission)
 
         lock = self._get_prompt_lock(chat_id)
+        bot = update.get_bot()
 
         # Run prompt in background task so bot can still receive messages
         async def run_prompt() -> None:
             # Notify if we're waiting for another prompt to finish
             if lock.locked():
-                await update.message.reply_text(
-                    f"{tag} (Queued, waiting for previous request...)"
-                )  # type: ignore
+                await bot.send_message(
+                    chat_id, f"{tag} (Queued, waiting for previous request...)"
+                )
             async with lock:
                 logger.info("Processing prompt for chat %s: %s", chat_id, text[:50])
                 self._cancel_flags[chat_id] = False
@@ -1036,8 +1052,10 @@ class VoiceAgentBot:
                 stop_keyboard = InlineKeyboardMarkup(
                     [[InlineKeyboardButton("🛑 Stop", callback_data="cancel")]]
                 )
-                working_msg = await update.message.reply_text(  # type: ignore
-                    f"{tag} ⏳ Working...", reply_markup=stop_keyboard
+                working_msg = await bot.send_message(
+                    chat_id,
+                    f"{tag} ⏳ Working...",
+                    reply_markup=stop_keyboard,
                 )
 
                 response_buffer: list[str] = []
@@ -1074,7 +1092,7 @@ class VoiceAgentBot:
                             await self.session_manager._close_client(session)
                 except Exception as e:
                     logger.exception("Error in background prompt for chat %s", chat_id)
-                    await update.message.reply_text(f"Error: {e}")  # type: ignore
+                    await bot.send_message(chat_id, f"Error: {e}")
                 finally:
                     was_cancelled = self._cancel_flags.get(chat_id, False)
                     # Only clean up tracking if we're still the registered
