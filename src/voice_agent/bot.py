@@ -1066,12 +1066,14 @@ class VoiceAgentBot:
 
                 response_buffer: list[str] = []
                 try:
+                    cancelled_by_flag = False
                     async for chunk in self.session_manager.send_prompt(
                         chat_id, text, images=images
                     ):
                         # Check if cancelled
                         if self._cancel_flags.get(chat_id, False):
                             logger.info("Task cancelled for chat %s", chat_id)
+                            cancelled_by_flag = True
                             break
                         response_buffer.append(chunk)
 
@@ -1082,8 +1084,16 @@ class VoiceAgentBot:
                             )
                             response_buffer = []
 
-                    # Send remaining
-                    if response_buffer and not self._cancel_flags.get(chat_id, False):
+                    if cancelled_by_flag:
+                        # Close SDK client to discard the interrupted
+                        # response stream — same as CancelledError path
+                        with contextlib.suppress(Exception):
+                            session = self.session_manager.get(chat_id)
+                            if session:
+                                await self.session_manager._close_client(
+                                    session
+                                )
+                    elif response_buffer:
                         await self._send_formatted(
                             update, "\n".join(response_buffer), chat_id
                         )
