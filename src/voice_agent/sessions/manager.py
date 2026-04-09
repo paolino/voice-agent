@@ -601,6 +601,11 @@ class SessionManager:
         session.message_count += 1
 
         try:
+            # Always create a fresh SDK client for each prompt to avoid
+            # stale messages in the anyio memory stream from a previous
+            # response leaking into the next receive_response() call.
+            # Conversation context is preserved via resume=session_id.
+            await self._close_client(session)
             client = await self._get_or_create_client(session)
 
             if images:
